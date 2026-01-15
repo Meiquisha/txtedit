@@ -124,51 +124,51 @@ def calcular_tiempo_en_minutos_segundos(segundos_totales):
 
 def categorizar_tiempo_agente(segundos):
     """
-    Categoriza el tiempo de captura agente según los intervalos especificados
+    Categoriza el tiempo de captura agente (formato exacto solicitado)
     """
     if pd.isna(segundos) or segundos < 0:
         return None
     
     if segundos < 60:
-        return "menos de 1 minuto"
+        return "menos de 1 min"
     elif segundos <= 90:
-        return "menos de 1m 30s"
+        return "menos de 1min 30seg"
     elif segundos <= 180:
-        return "de 1m 30s a 3m"
+        return "1min 30seg a 3min"
     elif segundos <= 300:
-        return "de 3m a 5m"
+        return "3min a 5min"
     elif segundos <= 600:
-        return "de 5m a 10m"
+        return "5min a 10min"
     else:  # > 600
-        return "mayor a 10 minutos"
+        return "más de 10min"
 
 def categorizar_tiempo_alta_robot(segundos):
     """
-    Categoriza el tiempo de alta robot según los intervalos especificados
+    Categoriza el tiempo de alta robot (formato exacto solicitado)
     """
     if pd.isna(segundos) or segundos < 0:
         return None
     
     if segundos < 60:
-        return "menos de 1m"
+        return "menos de 1min"
     elif segundos <= 90:
-        return "de 1m a 1m 30s"
+        return "1min a 1min 30seg"
     elif segundos <= 180:
-        return "de 1m 30s a 3m"
+        return "1min 30seg a 3min"
     elif segundos <= 300:
-        return "de 3m a 5m"
+        return "3min a 5min"
     elif segundos <= 600:
-        return "de 5m a 10m"
+        return "5min a 10min"
     elif segundos <= 900:
-        return "de 10m a 15m"
+        return "10min a 15min"
     elif segundos <= 1200:
-        return "de 15m a 20m"
+        return "15min a 20min"
     else:  # > 1200
-        return "mayor a 20m"
+        return "más de 20min"
 
 def categorizar_numero_cargos(num_cargos):
     """
-    Categoriza el número de cargos según los intervalos especificados
+    Categoriza el número de cargos (formato consistente)
     """
     if pd.isna(num_cargos) or num_cargos <= 0:
         return None
@@ -373,7 +373,7 @@ def calcular_categorias_cargos(df):
         
         # Mostrar distribución
         logger.info("  Distribución de categorías de cargos:")
-        categorias = df["Categoria de cargos"].value_counts().head(10)  # Mostrar top 10
+        categorias = df["Categoria de cargos"].value_counts().head(10)
         for categoria, count in categorias.items():
             if pd.notna(categoria):
                 logger.info(f"    {categoria}: {count}")
