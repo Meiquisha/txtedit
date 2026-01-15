@@ -296,7 +296,7 @@ def crear_hoja_tiempo_agente(workbook, df):
     # Aplicar formato a la tabla
     aplicar_formato_tabla_tiempos(ws_agente, len(pivot_agente), len(categorias_orden)+2)
     
-    # Crear gráfica combinada (barras + línea) con ÚLTIMOS 7 días
+    # Crear gráfica combinada (columnas apiladas + línea) con ÚLTIMOS 7 días
     crear_grafica_combinada_tiempo_agente(workbook, ws_agente, df_ultimos_7, categorias_orden)
     
     # Agregar filtros a la tabla completa
@@ -392,7 +392,7 @@ def crear_hoja_tiempo_robot(workbook, df):
     # Aplicar formato a la tabla
     aplicar_formato_tabla_tiempos(ws_robot, len(pivot_robot), len(categorias_orden)+2)
     
-    # Crear gráfica combinada (barras + línea) con ÚLTIMOS 7 días
+    # Crear gráfica combinada (columnas apiladas + línea) con ÚLTIMOS 7 días
     crear_grafica_combinada_tiempo_robot(workbook, ws_robot, df_ultimos_7, categorias_orden)
     
     # Agregar filtros a la tabla completa
@@ -457,9 +457,11 @@ def crear_grafica_combinada_tiempo_agente(workbook, worksheet, df_ultimos_7, cat
         logger.warning("⚠️ No hay datos para crear gráfica de tiempo agente")
         return
     
-    # Crear gráfico de barras apiladas
+    # Crear gráfico de columnas apiladas
     chart = BarChart()
-    chart.type = "col"
+    chart.type = "col"  # Esto ya es para columnas
+    chart.grouping = "stacked"  # ¡IMPORTANTE! Apiladas
+    chart.overlap = 100  # Para que las columnas se apilen completamente
     chart.style = 10
     chart.title = "Distribución Tiempo Agente (Últimos 7 días)"
     chart.y_axis.title = "Cantidad de Casos"
@@ -479,7 +481,7 @@ def crear_grafica_combinada_tiempo_agente(workbook, worksheet, df_ultimos_7, cat
     # Obtener el rango de datos de los últimos 7 días en la hoja
     start_row = len(worksheet['A']) - len(df_ultimos_7) + 1  # Últimas filas
     
-    # Datos para las barras (categorías)
+    # Datos para las columnas (categorías)
     for i, categoria in enumerate(categorias_orden):
         data = Reference(
             worksheet, 
@@ -542,7 +544,7 @@ def crear_grafica_combinada_tiempo_agente(workbook, worksheet, df_ultimos_7, cat
     worksheet[nota_cell] = "NOTA: La gráfica muestra automáticamente los últimos 7 días."
     worksheet[nota_cell].font = Font(name="Calibri", size=9, italic=True, color="666666")
     
-    logger.info("✓ Gráfica combinada de tiempo agente creada (barras + línea)")
+    logger.info("✓ Gráfica combinada de tiempo agente creada (columnas apiladas + línea)")
 
 def crear_grafica_combinada_tiempo_robot(workbook, worksheet, df_ultimos_7, categorias_orden):
     """
@@ -552,9 +554,11 @@ def crear_grafica_combinada_tiempo_robot(workbook, worksheet, df_ultimos_7, cate
         logger.warning("⚠️ No hay datos para crear gráfica de tiempo robot")
         return
     
-    # Crear gráfico de barras apiladas
+    # Crear gráfico de columnas apiladas
     chart = BarChart()
-    chart.type = "col"
+    chart.type = "col"  # Esto ya es para columnas
+    chart.grouping = "stacked"  # ¡IMPORTANTE! Apiladas
+    chart.overlap = 100  # Para que las columnas se apilen completamente
     chart.style = 10
     chart.title = "Distribución Tiempo Robot (Últimos 7 días)"
     chart.y_axis.title = "Cantidad de Casos"
@@ -577,7 +581,7 @@ def crear_grafica_combinada_tiempo_robot(workbook, worksheet, df_ultimos_7, cate
     # Obtener el rango de datos de los últimos 7 días en la hoja
     start_row = len(worksheet['A']) - len(df_ultimos_7) + 1  # Últimas filas
     
-    # Datos para las barras (categorías)
+    # Datos para las columnas (categorías)
     for i, categoria in enumerate(categorias_orden):
         data = Reference(
             worksheet, 
@@ -640,7 +644,7 @@ def crear_grafica_combinada_tiempo_robot(workbook, worksheet, df_ultimos_7, cate
     worksheet[nota_cell] = "NOTA: La gráfica muestra automáticamente los últimos 7 días."
     worksheet[nota_cell].font = Font(name="Calibri", size=9, italic=True, color="666666")
     
-    logger.info("✓ Gráfica combinada de tiempo robot creada (barras + línea)")
+    logger.info("✓ Gráfica combinada de tiempo robot creada (columnas apiladas + línea)")
 
 def aplicar_formato_completo_excel(archivo_excel):
     """
@@ -1240,7 +1244,7 @@ def procesar_y_crear_hojas_tiempos(df_final, archivo_excel):
 def main():
     logger.info("🚀 Generando Reporte Excel Aclarapp con cálculos de tiempo y categorías")
     logger.info("💡 NUEVA CARACTERÍSTICA: Análisis de tiempos por día en hojas separadas")
-    logger.info("📊 NUEVA CARACTERÍSTICA: Gráficas combinadas (barras + línea)")
+    logger.info("📊 NUEVA CARACTERÍSTICA: Gráficas de COLUMNAS APILADAS + línea")
     logger.info("🔧 NUEVA CARACTERÍSTICA: Filtros en tablas para seleccionar rangos personalizados")
     logger.info("📈 NUEVA CARACTERÍSTICA: ÚLTIMOS 7 días automáticamente en gráficas")
 
@@ -1478,7 +1482,7 @@ def main():
     logger.info("\n🎯 NUEVAS HERRAMIENTAS DISPONIBLES:")
     logger.info("1. Hoja 'Tiempo agente': Distribución diaria de categorías")
     logger.info("2. Hoja 'Tiempo robot': Distribución diaria de categorías")
-    logger.info("3. Gráficas combinadas (barras apiladas + línea de totales)")
+    logger.info("3. Gráficas de COLUMNAS APILADAS + línea de totales")
     logger.info("4. Gráficas muestran AUTOMÁTICAMENTE los ÚLTIMOS 7 días")
     logger.info("5. Tablas con filtros para seleccionar rangos personalizados")
     logger.info("6. Gráficas posicionadas al lado derecho de las tablas")
