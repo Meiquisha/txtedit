@@ -145,11 +145,15 @@ def categorizar_tiempo_agente(segundos):
 def categorizar_tiempo_alta_robot(segundos):
     """
     Categoriza el tiempo de alta robot (formato exacto solicitado)
+    CON NUEVA CATEGORÍA: Intervención manual para > 25min (1500 seg)
     """
     if pd.isna(segundos) or segundos < 0:
         return None
     
-    if segundos < 60:
+    # 25 minutos = 1500 segundos
+    if segundos > 1500:  # > 25 minutos
+        return "Intervención manual (> 25min)"
+    elif segundos <= 60:
         return "menos de 1min"
     elif segundos <= 90:
         return "1min a 1min 30seg"
@@ -163,8 +167,8 @@ def categorizar_tiempo_alta_robot(segundos):
         return "10min a 15min"
     elif segundos <= 1200:
         return "15min a 20min"
-    else:  # > 1200
-        return "más de 20min"
+    else:  # 1201-1500 segundos (20-25min)
+        return "20min a 25min"
 
 def categorizar_numero_cargos(num_cargos):
     """
@@ -283,6 +287,7 @@ def calcular_tiempos_agente_robot(df):
     # 2. TIEMPO DE ALTA ROBOT (Fecha Atendido - Fecha Asignacion)
     # =========================
     logger.info("\n🔹 Tiempo de alta robot (Fecha Atendido - Fecha Asignacion):")
+    logger.info("  NOTA: Nueva categoría 'Intervención manual' para tiempos > 25min (1500 seg)")
     
     # Verificar columnas necesarias
     columnas_requeridas = ["Fecha Asignacion", "Fecha Atendido"]
@@ -309,7 +314,7 @@ def calcular_tiempos_agente_robot(df):
             mask_fechas_validas, "Tiempo de alta robot segundos"
         ].apply(calcular_tiempo_en_minutos_segundos)
         
-        # Categorizar tiempo alta robot
+        # Categorizar tiempo alta robot (con nueva categoría)
         df.loc[mask_fechas_validas, "Categoria tiempo Alta robot"] = df.loc[
             mask_fechas_validas, "Tiempo de alta robot segundos"
         ].apply(categorizar_tiempo_alta_robot)
@@ -320,19 +325,33 @@ def calcular_tiempos_agente_robot(df):
         
         if segundos_no_nulos > 0:
             # Mostrar distribución de categorías
-            logger.info("  Distribución de categorías de tiempo alta robot:")
+            logger.info("  Distribución de categorías de tiempo alta robot (con nueva categoría):")
             categorias = df["Categoria tiempo Alta robot"].value_counts()
             for categoria, count in categorias.items():
                 if pd.notna(categoria):
                     logger.info(f"    {categoria}: {count}")
             
-            # Mostrar un ejemplo
-            idx_ejemplo = df[mask_fechas_validas].index[0]
-            ejemplo = df.loc[idx_ejemplo]
-            logger.info(f"  Ejemplo de cálculo:")
-            logger.info(f"    Segundos: {ejemplo['Tiempo de alta robot segundos']:.0f}")
-            logger.info(f"    Formato mm:ss: {ejemplo['Tiempo de alta robot']}")
-            logger.info(f"    Categoría: {ejemplo['Categoria tiempo Alta robot']}")
+            # Contar específicamente intervenciones manuales
+            intervenciones = df[df["Categoria tiempo Alta robot"] == "Intervención manual (> 25min)"].shape[0]
+            logger.info(f"  Total casos de 'Intervención manual (> 25min)': {intervenciones}")
+            
+            # Mostrar un ejemplo de intervención manual si hay
+            mask_intervencion = df["Categoria tiempo Alta robot"] == "Intervención manual (> 25min)"
+            if mask_intervencion.any():
+                idx_ejemplo = df[mask_intervencion].index[0]
+                ejemplo = df.loc[idx_ejemplo]
+                logger.info(f"  Ejemplo de Intervención manual:")
+                logger.info(f"    Segundos: {ejemplo['Tiempo de alta robot segundos']:.0f}")
+                logger.info(f"    Formato mm:ss: {ejemplo['Tiempo de alta robot']}")
+                logger.info(f"    Categoría: {ejemplo['Categoria tiempo Alta robot']}")
+            else:
+                # Mostrar cualquier ejemplo
+                idx_ejemplo = df[mask_fechas_validas].index[0]
+                ejemplo = df.loc[idx_ejemplo]
+                logger.info(f"  Ejemplo de cálculo:")
+                logger.info(f"    Segundos: {ejemplo['Tiempo de alta robot segundos']:.0f}")
+                logger.info(f"    Formato mm:ss: {ejemplo['Tiempo de alta robot']}")
+                logger.info(f"    Categoría: {ejemplo['Categoria tiempo Alta robot']}")
         
         # Estadísticas descriptivas
         if segundos_no_nulos > 0:
@@ -344,6 +363,16 @@ def calcular_tiempos_agente_robot(df):
             logger.info(f"    Mínimo: {min_seg:.0f}s")
             logger.info(f"    Máximo: {max_seg:.0f}s")
             logger.info(f"    Promedio: {mean_seg:.0f}s")
+            
+            # Estadísticas específicas para intervenciones manuales
+            mask_intervencion = df["Categoria tiempo Alta robot"] == "Intervención manual (> 25min)"
+            if mask_intervencion.any():
+                intervenciones_seg = df.loc[mask_intervencion, "Tiempo de alta robot segundos"]
+                logger.info(f"  Estadísticas de Intervenciones manuales:")
+                logger.info(f"    Cantidad: {len(intervenciones_seg)} casos")
+                logger.info(f"    Tiempo mínimo: {intervenciones_seg.min():.0f}s")
+                logger.info(f"    Tiempo máximo: {intervenciones_seg.max():.0f}s")
+                logger.info(f"    Tiempo promedio: {intervenciones_seg.mean():.0f}s")
     else:
         logger.warning("  ⚠️ No hay filas con ambas fechas válidas para calcular")
         df["Tiempo de alta robot"] = None
@@ -399,6 +428,7 @@ def calcular_categorias_cargos(df):
 # =========================
 def main():
     logger.info("🚀 Generando Reporte Excel Aclarapp con cálculos de tiempo y categorías")
+    logger.info("💡 NUEVA CARACTERÍSTICA: Categoría 'Intervención manual' para tiempos de robot > 25min")
 
     # =========================
     # CARGA CSV
@@ -600,9 +630,14 @@ def main():
     if "Categoria tiempo Alta robot" in df_final.columns:
         categorias_robot = df_final["Categoria tiempo Alta robot"].value_counts()
         if not categorias_robot.empty:
-            logger.info("Distribución de categorías tiempo alta robot:")
+            logger.info("Distribución de categorías tiempo alta robot (con nueva categoría):")
             for cat, count in categorias_robot.head(5).items():
                 logger.info(f"  {cat}: {count}")
+        
+        # Específicamente mostrar intervenciones manuales
+        intervenciones = df_final[df_final["Categoria tiempo Alta robot"] == "Intervención manual (> 25min)"].shape[0]
+        if intervenciones > 0:
+            logger.info(f"📢 CASOS DE INTERVENCIÓN MANUAL: {intervenciones} casos (> 25min)")
     
     if "Categoria de cargos" in df_final.columns:
         categorias_cargos = df_final["Categoria de cargos"].value_counts()
@@ -664,6 +699,13 @@ def main():
     if "Categoria tiempo Alta robot" in df_final.columns:
         total_cat = df_final["Categoria tiempo Alta robot"].notna().sum()
         logger.info(f"Categorías tiempo alta robot calculadas: {total_cat}")
+        
+        # Mostrar específicamente intervenciones manuales
+        intervenciones = df_final[df_final["Categoria tiempo Alta robot"] == "Intervención manual (> 25min)"].shape[0]
+        if intervenciones > 0:
+            logger.info(f"🚨 INTERVENCIONES MANUALES (>25min): {intervenciones} casos")
+            porcentaje = (intervenciones / total_cat * 100) if total_cat > 0 else 0
+            logger.info(f"   Representa el {porcentaje:.1f}% del total")
     
     if "Categoria de cargos" in df_final.columns:
         total_cat = df_final["Categoria de cargos"].notna().sum()
