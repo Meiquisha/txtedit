@@ -10,6 +10,7 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side, NamedSty
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import BarChart, LineChart, Reference, Series
 from openpyxl.chart.label import DataLabelList
+from openpyxl.chart.axis import DateAxis
 
 # =========================
 # LOGGING
@@ -265,13 +266,17 @@ def crear_hoja_tiempo_agente(workbook, df):
     # Ordenar por fecha (ascendente)
     pivot_agente = pivot_agente.sort_index()
     
-    # Limitar a últimos 7 días para la gráfica
-    ultima_fecha = pivot_agente.index.max()
-    fecha_limite = ultima_fecha - timedelta(days=6)
-    df_ultimos_7 = pivot_agente[pivot_agente.index >= fecha_limite].copy()
+    # Obtener ÚLTIMOS 7 días (no primeros)
+    if len(pivot_agente) > 0:
+        ultima_fecha = pivot_agente.index.max()
+        fecha_limite = ultima_fecha - timedelta(days=6)
+        df_ultimos_7 = pivot_agente[pivot_agente.index >= fecha_limite].copy()
+        logger.info(f"✓ Últimos 7 días: {len(df_ultimos_7)} días (desde {df_ultimos_7.index.min()} hasta {df_ultimos_7.index.max()})")
+    else:
+        df_ultimos_7 = pd.DataFrame()
+        logger.warning("⚠️ No hay datos para crear tabla")
     
     logger.info(f"✓ Tabla pivote creada: {len(pivot_agente)} días de datos")
-    logger.info(f"✓ Últimos 7 días: {len(df_ultimos_7)} días")
     
     # Escribir encabezado en Excel
     ws_agente["A1"] = "Fecha"
@@ -281,7 +286,7 @@ def crear_hoja_tiempo_agente(workbook, df):
         col += 1
     ws_agente.cell(row=1, column=col, value="Total")
     
-    # Escribir datos
+    # Escribir datos COMPLETOS (todos los días)
     for i, (fecha, fila) in enumerate(pivot_agente.iterrows(), start=2):
         ws_agente.cell(row=i, column=1, value=fecha)
         for j, categoria in enumerate(categorias_orden, start=2):
@@ -291,8 +296,12 @@ def crear_hoja_tiempo_agente(workbook, df):
     # Aplicar formato a la tabla
     aplicar_formato_tabla_tiempos(ws_agente, len(pivot_agente), len(categorias_orden)+2)
     
-    # Crear gráfica combinada (barras + línea)
-    crear_grafica_tiempo_agente(workbook, ws_agente, df_ultimos_7, categorias_orden)
+    # Crear gráfica combinada (barras + línea) con ÚLTIMOS 7 días
+    crear_grafica_combinada_tiempo_agente(workbook, ws_agente, df_ultimos_7, categorias_orden)
+    
+    # Agregar filtros a la tabla completa
+    if len(pivot_agente) > 0:
+        ws_agente.auto_filter.ref = f"A1:{get_column_letter(len(categorias_orden)+2)}{len(pivot_agente)+1}"
     
     logger.info("✅ Hoja 'Tiempo agente' creada exitosamente")
 
@@ -353,13 +362,17 @@ def crear_hoja_tiempo_robot(workbook, df):
     # Ordenar por fecha (ascendente)
     pivot_robot = pivot_robot.sort_index()
     
-    # Limitar a últimos 7 días para la gráfica
-    ultima_fecha = pivot_robot.index.max()
-    fecha_limite = ultima_fecha - timedelta(days=6)
-    df_ultimos_7 = pivot_robot[pivot_robot.index >= fecha_limite].copy()
+    # Obtener ÚLTIMOS 7 días (no primeros)
+    if len(pivot_robot) > 0:
+        ultima_fecha = pivot_robot.index.max()
+        fecha_limite = ultima_fecha - timedelta(days=6)
+        df_ultimos_7 = pivot_robot[pivot_robot.index >= fecha_limite].copy()
+        logger.info(f"✓ Últimos 7 días: {len(df_ultimos_7)} días (desde {df_ultimos_7.index.min()} hasta {df_ultimos_7.index.max()})")
+    else:
+        df_ultimos_7 = pd.DataFrame()
+        logger.warning("⚠️ No hay datos para crear tabla")
     
     logger.info(f"✓ Tabla pivote creada: {len(pivot_robot)} días de datos")
-    logger.info(f"✓ Últimos 7 días: {len(df_ultimos_7)} días")
     
     # Escribir encabezado en Excel
     ws_robot["A1"] = "Fecha"
@@ -369,7 +382,7 @@ def crear_hoja_tiempo_robot(workbook, df):
         col += 1
     ws_robot.cell(row=1, column=col, value="Total")
     
-    # Escribir datos
+    # Escribir datos COMPLETOS (todos los días)
     for i, (fecha, fila) in enumerate(pivot_robot.iterrows(), start=2):
         ws_robot.cell(row=i, column=1, value=fecha)
         for j, categoria in enumerate(categorias_orden, start=2):
@@ -379,8 +392,12 @@ def crear_hoja_tiempo_robot(workbook, df):
     # Aplicar formato a la tabla
     aplicar_formato_tabla_tiempos(ws_robot, len(pivot_robot), len(categorias_orden)+2)
     
-    # Crear gráfica combinada (barras + línea)
-    crear_grafica_tiempo_robot(workbook, ws_robot, df_ultimos_7, categorias_orden)
+    # Crear gráfica combinada (barras + línea) con ÚLTIMOS 7 días
+    crear_grafica_combinada_tiempo_robot(workbook, ws_robot, df_ultimos_7, categorias_orden)
+    
+    # Agregar filtros a la tabla completa
+    if len(pivot_robot) > 0:
+        ws_robot.auto_filter.ref = f"A1:{get_column_letter(len(categorias_orden)+2)}{len(pivot_robot)+1}"
     
     logger.info("✅ Hoja 'Tiempo robot' creada exitosamente")
 
@@ -432,22 +449,22 @@ def aplicar_formato_tabla_tiempos(worksheet, num_filas, num_columnas):
         adjusted_width = min(max(max_length + 2, 10), 30)
         worksheet.column_dimensions[column_letter].width = adjusted_width
 
-def crear_grafica_tiempo_agente(workbook, worksheet, df_ultimos_7, categorias_orden):
+def crear_grafica_combinada_tiempo_agente(workbook, worksheet, df_ultimos_7, categorias_orden):
     """
-    Crea gráfica combinada para tiempo agente
+    Crea gráfica combinada para tiempo agente con ÚLTIMOS 7 días
     """
-    # Determinar posición para la gráfica (después de la tabla)
-    start_row = len(df_ultimos_7) + 4
-    start_col = 2
+    if len(df_ultimos_7) == 0:
+        logger.warning("⚠️ No hay datos para crear gráfica de tiempo agente")
+        return
     
     # Crear gráfico de barras apiladas
-    chart1 = BarChart()
-    chart1.type = "col"
-    chart1.style = 10
-    chart1.title = "Distribución Tiempo Agente (Últimos 7 días)"
-    chart1.y_axis.title = "Cantidad de Casos"
-    chart1.x_axis.title = "Fecha"
-    chart1.legend.position = "b"
+    chart = BarChart()
+    chart.type = "col"
+    chart.style = 10
+    chart.title = "Distribución Tiempo Agente (Últimos 7 días)"
+    chart.y_axis.title = "Cantidad de Casos"
+    chart.x_axis.title = "Fecha"
+    chart.legend.position = "b"
     
     # Definir colores de verde a rojo
     colors_agente = [
@@ -459,65 +476,90 @@ def crear_grafica_tiempo_agente(workbook, worksheet, df_ultimos_7, categorias_or
         "C00000"   # Rojo oscuro (más de 10min)
     ]
     
+    # Obtener el rango de datos de los últimos 7 días en la hoja
+    start_row = len(worksheet['A']) - len(df_ultimos_7) + 1  # Últimas filas
+    
     # Datos para las barras (categorías)
     for i, categoria in enumerate(categorias_orden):
         data = Reference(
             worksheet, 
-            min_col=start_col + i, 
-            min_row=2, 
-            max_col=start_col + i, 
-            max_row=len(df_ultimos_7) + 1
+            min_col=2 + i, 
+            min_row=start_row, 
+            max_row=len(worksheet['A'])
         )
         series = Series(data, title=categoria)
         series.graphicalProperties.solidFill = colors_agente[i]
-        chart1.series.append(series)
+        chart.series.append(series)
     
     # Crear gráfico de línea para el total
-    chart2 = LineChart()
-    chart2.style = 10
-    chart2.title = "Total de Casos"
+    line_chart = LineChart()
+    line_chart.title = "Total de Casos"
     
-    # Datos para la línea (total)
+    # Datos para la línea (total) - última columna
     data_total = Reference(
         worksheet,
         min_col=len(categorias_orden) + 2,
-        min_row=1,
-        max_row=len(df_ultimos_7) + 1
+        min_row=start_row,
+        max_row=len(worksheet['A'])
     )
+    
     series_total = Series(data_total, title="Total")
     series_total.graphicalProperties.line.solidFill = "000000"  # Negro
-    series_total.graphicalProperties.line.width = 25000  # 2.5pt
+    series_total.graphicalProperties.line.width = 30000  # 3pt
+    series_total.marker.symbol = "circle"
+    series_total.marker.size = 8
+    series_total.marker.graphicalProperties.solidFill = "000000"
+    series_total.marker.graphicalProperties.line.solidFill = "000000"
     
     # Agregar etiquetas de datos a la línea
     series_total.dLbls = DataLabelList()
     series_total.dLbls.showVal = True
+    series_total.dLbls.position = "t"  # Top
     
     # Combinar gráficos
-    chart1.y_axis.majorGridlines = None
-    chart1 += chart2
+    chart.y_axis.majorGridlines = None
+    chart += line_chart
     
-    # Posicionar gráfico en la hoja
-    chart_cell = f"A{start_row}"
-    worksheet.add_chart(chart1, chart_cell)
+    # Ajustar posición del eje X para que muestre las fechas correctamente
+    dates = Reference(
+        worksheet,
+        min_col=1,
+        min_row=start_row,
+        max_row=len(worksheet['A'])
+    )
+    chart.set_categories(dates)
     
-    logger.info("✓ Gráfica de tiempo agente creada")
+    # Posicionar gráfico a la derecha de la tabla
+    chart_cell = get_column_letter(len(categorias_orden) + 5) + "2"
+    worksheet.add_chart(chart, chart_cell)
+    
+    # Ajustar tamaño de la gráfica
+    chart.width = 30
+    chart.height = 20
+    
+    # Agregar nota explicativa
+    nota_cell = get_column_letter(len(categorias_orden) + 5) + "25"
+    worksheet[nota_cell] = "NOTA: La gráfica muestra automáticamente los últimos 7 días."
+    worksheet[nota_cell].font = Font(name="Calibri", size=9, italic=True, color="666666")
+    
+    logger.info("✓ Gráfica combinada de tiempo agente creada (barras + línea)")
 
-def crear_grafica_tiempo_robot(workbook, worksheet, df_ultimos_7, categorias_orden):
+def crear_grafica_combinada_tiempo_robot(workbook, worksheet, df_ultimos_7, categorias_orden):
     """
-    Crea gráfica combinada para tiempo robot
+    Crea gráfica combinada para tiempo robot con ÚLTIMOS 7 días
     """
-    # Determinar posición para la gráfica (después de la tabla)
-    start_row = len(df_ultimos_7) + 4
-    start_col = 2
+    if len(df_ultimos_7) == 0:
+        logger.warning("⚠️ No hay datos para crear gráfica de tiempo robot")
+        return
     
     # Crear gráfico de barras apiladas
-    chart1 = BarChart()
-    chart1.type = "col"
-    chart1.style = 10
-    chart1.title = "Distribución Tiempo Robot (Últimos 7 días)"
-    chart1.y_axis.title = "Cantidad de Casos"
-    chart1.x_axis.title = "Fecha"
-    chart1.legend.position = "b"
+    chart = BarChart()
+    chart.type = "col"
+    chart.style = 10
+    chart.title = "Distribución Tiempo Robot (Últimos 7 días)"
+    chart.y_axis.title = "Cantidad de Casos"
+    chart.x_axis.title = "Fecha"
+    chart.legend.position = "b"
     
     # Definir colores de verde a negro
     colors_robot = [
@@ -532,48 +574,73 @@ def crear_grafica_tiempo_robot(workbook, worksheet, df_ultimos_7, categorias_ord
         "000000"   # Negro (Intervención manual)
     ]
     
+    # Obtener el rango de datos de los últimos 7 días en la hoja
+    start_row = len(worksheet['A']) - len(df_ultimos_7) + 1  # Últimas filas
+    
     # Datos para las barras (categorías)
     for i, categoria in enumerate(categorias_orden):
         data = Reference(
             worksheet, 
-            min_col=start_col + i, 
-            min_row=2, 
-            max_col=start_col + i, 
-            max_row=len(df_ultimos_7) + 1
+            min_col=2 + i, 
+            min_row=start_row, 
+            max_row=len(worksheet['A'])
         )
         series = Series(data, title=categoria)
         series.graphicalProperties.solidFill = colors_robot[i]
-        chart1.series.append(series)
+        chart.series.append(series)
     
     # Crear gráfico de línea para el total
-    chart2 = LineChart()
-    chart2.style = 10
-    chart2.title = "Total de Casos"
+    line_chart = LineChart()
+    line_chart.title = "Total de Casos"
     
-    # Datos para la línea (total)
+    # Datos para la línea (total) - última columna
     data_total = Reference(
         worksheet,
         min_col=len(categorias_orden) + 2,
-        min_row=1,
-        max_row=len(df_ultimos_7) + 1
+        min_row=start_row,
+        max_row=len(worksheet['A'])
     )
+    
     series_total = Series(data_total, title="Total")
     series_total.graphicalProperties.line.solidFill = "000000"  # Negro
-    series_total.graphicalProperties.line.width = 25000  # 2.5pt
+    series_total.graphicalProperties.line.width = 30000  # 3pt
+    series_total.marker.symbol = "circle"
+    series_total.marker.size = 8
+    series_total.marker.graphicalProperties.solidFill = "000000"
+    series_total.marker.graphicalProperties.line.solidFill = "000000"
     
     # Agregar etiquetas de datos a la línea
     series_total.dLbls = DataLabelList()
     series_total.dLbls.showVal = True
+    series_total.dLbls.position = "t"  # Top
     
     # Combinar gráficos
-    chart1.y_axis.majorGridlines = None
-    chart1 += chart2
+    chart.y_axis.majorGridlines = None
+    chart += line_chart
     
-    # Posicionar gráfico en la hoja
-    chart_cell = f"A{start_row}"
-    worksheet.add_chart(chart1, chart_cell)
+    # Ajustar posición del eje X para que muestre las fechas correctamente
+    dates = Reference(
+        worksheet,
+        min_col=1,
+        min_row=start_row,
+        max_row=len(worksheet['A'])
+    )
+    chart.set_categories(dates)
     
-    logger.info("✓ Gráfica de tiempo robot creada")
+    # Posicionar gráfico a la derecha de la tabla
+    chart_cell = get_column_letter(len(categorias_orden) + 5) + "2"
+    worksheet.add_chart(chart, chart_cell)
+    
+    # Ajustar tamaño de la gráfica
+    chart.width = 30
+    chart.height = 20
+    
+    # Agregar nota explicativa
+    nota_cell = get_column_letter(len(categorias_orden) + 5) + "25"
+    worksheet[nota_cell] = "NOTA: La gráfica muestra automáticamente los últimos 7 días."
+    worksheet[nota_cell].font = Font(name="Calibri", size=9, italic=True, color="666666")
+    
+    logger.info("✓ Gráfica combinada de tiempo robot creada (barras + línea)")
 
 def aplicar_formato_completo_excel(archivo_excel):
     """
@@ -776,7 +843,7 @@ def aplicar_formato_completo_excel(archivo_excel):
                             celda_cargos.fill = fill_cargos_naranja
                         else:
                             celda_cargos.fill = fill_cargos_rojo
-                        contador_formatos += 1
+                    contador_formatos += 1
             
             logger.info(f"   ✓ Formato condicional aplicado a {contador_formatos} celdas (con bordes blancos preservados)")
             
@@ -1174,7 +1241,8 @@ def main():
     logger.info("🚀 Generando Reporte Excel Aclarapp con cálculos de tiempo y categorías")
     logger.info("💡 NUEVA CARACTERÍSTICA: Análisis de tiempos por día en hojas separadas")
     logger.info("📊 NUEVA CARACTERÍSTICA: Gráficas combinadas (barras + línea)")
-    logger.info("🎨 NUEVA CARACTERÍSTICA: Formato completo unificado")
+    logger.info("🔧 NUEVA CARACTERÍSTICA: Filtros en tablas para seleccionar rangos personalizados")
+    logger.info("📈 NUEVA CARACTERÍSTICA: ÚLTIMOS 7 días automáticamente en gráficas")
 
     # =========================
     # CARGA CSV
@@ -1379,11 +1447,13 @@ def main():
     logger.info("="*60)
     logger.info(f"Archivo: {OUTPUT_FILE.name}")
     logger.info(f"Total filas: {len(df_final)}")
-    logger.info(f"Hojas creadas: {len(load_workbook(OUTPUT_FILE).sheetnames)}")
     
     # Mostrar nombres de hojas
     workbook = load_workbook(OUTPUT_FILE)
-    logger.info(f"Lista de hojas: {workbook.sheetnames}")
+    hojas = workbook.sheetnames
+    logger.info(f"Hojas creadas: {len(hojas)}")
+    for hoja in hojas:
+        logger.info(f"  - {hoja}")
     
     # Resumen de categorías
     if "Categoria tiempo agente" in df_final.columns:
@@ -1408,8 +1478,15 @@ def main():
     logger.info("\n🎯 NUEVAS HERRAMIENTAS DISPONIBLES:")
     logger.info("1. Hoja 'Tiempo agente': Distribución diaria de categorías")
     logger.info("2. Hoja 'Tiempo robot': Distribución diaria de categorías")
-    logger.info("3. Gráficas combinadas (barras + línea) para últimos 7 días")
-    logger.info("4. Tablas con totales diarios por categoría")
+    logger.info("3. Gráficas combinadas (barras apiladas + línea de totales)")
+    logger.info("4. Gráficas muestran AUTOMÁTICAMENTE los ÚLTIMOS 7 días")
+    logger.info("5. Tablas con filtros para seleccionar rangos personalizados")
+    logger.info("6. Gráficas posicionadas al lado derecho de las tablas")
+    
+    logger.info("\n🔧 CÓMO USAR LOS FILTROS:")
+    logger.info("- Haz clic en los filtros de la columna 'Fecha'")
+    logger.info("- Selecciona el rango de fechas que deseas analizar")
+    logger.info("- La gráfica se actualizará automáticamente con la selección")
     
     logger.info("\n✅ PROCESO COMPLETADO EXITOSAMENTE")
     logger.info("="*60)
