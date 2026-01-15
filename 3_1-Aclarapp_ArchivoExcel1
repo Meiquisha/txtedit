@@ -8,6 +8,8 @@ import numpy as np
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side, NamedStyle
 from openpyxl.utils import get_column_letter
+from openpyxl.chart import BarChart, LineChart, Reference, Series
+from openpyxl.chart.label import DataLabelList
 
 # =========================
 # LOGGING
@@ -209,6 +211,370 @@ def categorizar_numero_cargos(num_cargos):
     else:  # > 100
         return "más de 100 cargos"
 
+def crear_hoja_tiempo_agente(workbook, df):
+    """
+    Crea hoja 'Tiempo agente' con tabla pivote y gráfica
+    """
+    logger.info("\n📊 CREANDO HOJA 'TIEMPO AGENTE'...")
+    
+    # Crear nueva hoja
+    ws_agente = workbook.create_sheet(title="Tiempo agente")
+    
+    # Verificar que tenemos los datos necesarios
+    if "Fecha" not in df.columns or "Categoria tiempo agente" not in df.columns:
+        logger.warning("⚠️ Datos insuficientes para crear hoja 'Tiempo agente'")
+        ws_agente["A1"] = "Datos insuficientes"
+        return
+    
+    # Crear copia del DataFrame para procesar
+    df_agente = df[["Fecha", "Categoria tiempo agente"]].copy()
+    
+    # Extraer solo la fecha (sin hora)
+    df_agente["Fecha"] = pd.to_datetime(df_agente["Fecha"]).dt.date
+    
+    # Definir el orden de las categorías
+    categorias_orden = [
+        "menos de 1 min",
+        "menos de 1min 30seg", 
+        "1min 30seg a 3min",
+        "3min a 5min",
+        "5min a 10min",
+        "más de 10min"
+    ]
+    
+    # Crear tabla pivote
+    pivot_agente = pd.pivot_table(
+        df_agente,
+        index="Fecha",
+        columns="Categoria tiempo agente",
+        aggfunc="size",
+        fill_value=0
+    )
+    
+    # Reindexar para asegurar todas las categorías
+    for cat in categorias_orden:
+        if cat not in pivot_agente.columns:
+            pivot_agente[cat] = 0
+    
+    # Ordenar columnas según el orden definido
+    pivot_agente = pivot_agente[categorias_orden]
+    
+    # Calcular total por día
+    pivot_agente["Total"] = pivot_agente.sum(axis=1)
+    
+    # Ordenar por fecha (ascendente)
+    pivot_agente = pivot_agente.sort_index()
+    
+    # Limitar a últimos 7 días para la gráfica
+    ultima_fecha = pivot_agente.index.max()
+    fecha_limite = ultima_fecha - timedelta(days=6)
+    df_ultimos_7 = pivot_agente[pivot_agente.index >= fecha_limite].copy()
+    
+    logger.info(f"✓ Tabla pivote creada: {len(pivot_agente)} días de datos")
+    logger.info(f"✓ Últimos 7 días: {len(df_ultimos_7)} días")
+    
+    # Escribir encabezado en Excel
+    ws_agente["A1"] = "Fecha"
+    col = 2
+    for categoria in categorias_orden:
+        ws_agente.cell(row=1, column=col, value=categoria)
+        col += 1
+    ws_agente.cell(row=1, column=col, value="Total")
+    
+    # Escribir datos
+    for i, (fecha, fila) in enumerate(pivot_agente.iterrows(), start=2):
+        ws_agente.cell(row=i, column=1, value=fecha)
+        for j, categoria in enumerate(categorias_orden, start=2):
+            ws_agente.cell(row=i, column=j, value=int(fila[categoria]))
+        ws_agente.cell(row=i, column=len(categorias_orden)+2, value=int(fila["Total"]))
+    
+    # Aplicar formato a la tabla
+    aplicar_formato_tabla_tiempos(ws_agente, len(pivot_agente), len(categorias_orden)+2)
+    
+    # Crear gráfica combinada (barras + línea)
+    crear_grafica_tiempo_agente(workbook, ws_agente, df_ultimos_7, categorias_orden)
+    
+    logger.info("✅ Hoja 'Tiempo agente' creada exitosamente")
+
+def crear_hoja_tiempo_robot(workbook, df):
+    """
+    Crea hoja 'Tiempo robot' con tabla pivote y gráfica
+    """
+    logger.info("\n🤖 CREANDO HOJA 'TIEMPO ROBOT'...")
+    
+    # Crear nueva hoja
+    ws_robot = workbook.create_sheet(title="Tiempo robot")
+    
+    # Verificar que tenemos los datos necesarios
+    if "Fecha" not in df.columns or "Categoria tiempo Alta robot" not in df.columns:
+        logger.warning("⚠️ Datos insuficientes para crear hoja 'Tiempo robot'")
+        ws_robot["A1"] = "Datos insuficientes"
+        return
+    
+    # Crear copia del DataFrame para procesar
+    df_robot = df[["Fecha", "Categoria tiempo Alta robot"]].copy()
+    
+    # Extraer solo la fecha (sin hora)
+    df_robot["Fecha"] = pd.to_datetime(df_robot["Fecha"]).dt.date
+    
+    # Definir el orden de las categorías
+    categorias_orden = [
+        "menos de 1min",
+        "1min a 1min 30seg",
+        "1min 30seg a 3min",
+        "3min a 5min",
+        "5min a 10min",
+        "10min a 15min",
+        "15min a 20min",
+        "20min a 25min",
+        "Intervención manual (> 25min)"
+    ]
+    
+    # Crear tabla pivote
+    pivot_robot = pd.pivot_table(
+        df_robot,
+        index="Fecha",
+        columns="Categoria tiempo Alta robot",
+        aggfunc="size",
+        fill_value=0
+    )
+    
+    # Reindexar para asegurar todas las categorías
+    for cat in categorias_orden:
+        if cat not in pivot_robot.columns:
+            pivot_robot[cat] = 0
+    
+    # Ordenar columnas según el orden definido
+    pivot_robot = pivot_robot[categorias_orden]
+    
+    # Calcular total por día
+    pivot_robot["Total"] = pivot_robot.sum(axis=1)
+    
+    # Ordenar por fecha (ascendente)
+    pivot_robot = pivot_robot.sort_index()
+    
+    # Limitar a últimos 7 días para la gráfica
+    ultima_fecha = pivot_robot.index.max()
+    fecha_limite = ultima_fecha - timedelta(days=6)
+    df_ultimos_7 = pivot_robot[pivot_robot.index >= fecha_limite].copy()
+    
+    logger.info(f"✓ Tabla pivote creada: {len(pivot_robot)} días de datos")
+    logger.info(f"✓ Últimos 7 días: {len(df_ultimos_7)} días")
+    
+    # Escribir encabezado en Excel
+    ws_robot["A1"] = "Fecha"
+    col = 2
+    for categoria in categorias_orden:
+        ws_robot.cell(row=1, column=col, value=categoria)
+        col += 1
+    ws_robot.cell(row=1, column=col, value="Total")
+    
+    # Escribir datos
+    for i, (fecha, fila) in enumerate(pivot_robot.iterrows(), start=2):
+        ws_robot.cell(row=i, column=1, value=fecha)
+        for j, categoria in enumerate(categorias_orden, start=2):
+            ws_robot.cell(row=i, column=j, value=int(fila[categoria]))
+        ws_robot.cell(row=i, column=len(categorias_orden)+2, value=int(fila["Total"]))
+    
+    # Aplicar formato a la tabla
+    aplicar_formato_tabla_tiempos(ws_robot, len(pivot_robot), len(categorias_orden)+2)
+    
+    # Crear gráfica combinada (barras + línea)
+    crear_grafica_tiempo_robot(workbook, ws_robot, df_ultimos_7, categorias_orden)
+    
+    logger.info("✅ Hoja 'Tiempo robot' creada exitosamente")
+
+def aplicar_formato_tabla_tiempos(worksheet, num_filas, num_columnas):
+    """
+    Aplica formato a las tablas de tiempos
+    """
+    # Formato de encabezados
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")  # Azul
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    # Formato de datos
+    data_font = Font(name="Calibri", size=10)
+    data_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # Bordes
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Aplicar formato a encabezados
+    for col in range(1, num_columnas + 1):
+        cell = worksheet.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_alignment
+        cell.border = thin_border
+    
+    # Aplicar formato a datos
+    for row in range(2, num_filas + 2):  # +2 porque row=1 es encabezado
+        for col in range(1, num_columnas + 1):
+            cell = worksheet.cell(row=row, column=col)
+            cell.font = data_font
+            cell.alignment = data_alignment
+            cell.border = thin_border
+    
+    # Ajustar ancho de columnas
+    for col in range(1, num_columnas + 1):
+        column_letter = get_column_letter(col)
+        max_length = 0
+        for row in range(1, num_filas + 2):
+            cell_value = worksheet.cell(row=row, column=col).value
+            if cell_value:
+                max_length = max(max_length, len(str(cell_value)))
+        adjusted_width = min(max(max_length + 2, 10), 30)
+        worksheet.column_dimensions[column_letter].width = adjusted_width
+
+def crear_grafica_tiempo_agente(workbook, worksheet, df_ultimos_7, categorias_orden):
+    """
+    Crea gráfica combinada para tiempo agente
+    """
+    # Determinar posición para la gráfica (después de la tabla)
+    start_row = len(df_ultimos_7) + 4
+    start_col = 2
+    
+    # Crear gráfico de barras apiladas
+    chart1 = BarChart()
+    chart1.type = "col"
+    chart1.style = 10
+    chart1.title = "Distribución Tiempo Agente (Últimos 7 días)"
+    chart1.y_axis.title = "Cantidad de Casos"
+    chart1.x_axis.title = "Fecha"
+    chart1.legend.position = "b"
+    
+    # Definir colores de verde a rojo
+    colors_agente = [
+        "92D050",  # Verde claro (menos de 1 min)
+        "00B050",  # Verde
+        "FFC000",  # Amarillo
+        "FF6600",  # Naranja
+        "FF3300",  # Rojo claro
+        "C00000"   # Rojo oscuro (más de 10min)
+    ]
+    
+    # Datos para las barras (categorías)
+    for i, categoria in enumerate(categorias_orden):
+        data = Reference(
+            worksheet, 
+            min_col=start_col + i, 
+            min_row=2, 
+            max_col=start_col + i, 
+            max_row=len(df_ultimos_7) + 1
+        )
+        series = Series(data, title=categoria)
+        series.graphicalProperties.solidFill = colors_agente[i]
+        chart1.series.append(series)
+    
+    # Crear gráfico de línea para el total
+    chart2 = LineChart()
+    chart2.style = 10
+    chart2.title = "Total de Casos"
+    
+    # Datos para la línea (total)
+    data_total = Reference(
+        worksheet,
+        min_col=len(categorias_orden) + 2,
+        min_row=1,
+        max_row=len(df_ultimos_7) + 1
+    )
+    series_total = Series(data_total, title="Total")
+    series_total.graphicalProperties.line.solidFill = "000000"  # Negro
+    series_total.graphicalProperties.line.width = 25000  # 2.5pt
+    
+    # Agregar etiquetas de datos a la línea
+    series_total.dLbls = DataLabelList()
+    series_total.dLbls.showVal = True
+    
+    # Combinar gráficos
+    chart1.y_axis.majorGridlines = None
+    chart1 += chart2
+    
+    # Posicionar gráfico en la hoja
+    chart_cell = f"A{start_row}"
+    worksheet.add_chart(chart1, chart_cell)
+    
+    logger.info("✓ Gráfica de tiempo agente creada")
+
+def crear_grafica_tiempo_robot(workbook, worksheet, df_ultimos_7, categorias_orden):
+    """
+    Crea gráfica combinada para tiempo robot
+    """
+    # Determinar posición para la gráfica (después de la tabla)
+    start_row = len(df_ultimos_7) + 4
+    start_col = 2
+    
+    # Crear gráfico de barras apiladas
+    chart1 = BarChart()
+    chart1.type = "col"
+    chart1.style = 10
+    chart1.title = "Distribución Tiempo Robot (Últimos 7 días)"
+    chart1.y_axis.title = "Cantidad de Casos"
+    chart1.x_axis.title = "Fecha"
+    chart1.legend.position = "b"
+    
+    # Definir colores de verde a negro
+    colors_robot = [
+        "92D050",  # Verde claro (menos de 1min)
+        "00B050",  # Verde
+        "FFC000",  # Amarillo
+        "FF9900",  # Naranja claro
+        "FF6600",  # Naranja
+        "FF3300",  # Rojo claro
+        "C00000",  # Rojo
+        "7F7F7F",  # Gris (20-25min)
+        "000000"   # Negro (Intervención manual)
+    ]
+    
+    # Datos para las barras (categorías)
+    for i, categoria in enumerate(categorias_orden):
+        data = Reference(
+            worksheet, 
+            min_col=start_col + i, 
+            min_row=2, 
+            max_col=start_col + i, 
+            max_row=len(df_ultimos_7) + 1
+        )
+        series = Series(data, title=categoria)
+        series.graphicalProperties.solidFill = colors_robot[i]
+        chart1.series.append(series)
+    
+    # Crear gráfico de línea para el total
+    chart2 = LineChart()
+    chart2.style = 10
+    chart2.title = "Total de Casos"
+    
+    # Datos para la línea (total)
+    data_total = Reference(
+        worksheet,
+        min_col=len(categorias_orden) + 2,
+        min_row=1,
+        max_row=len(df_ultimos_7) + 1
+    )
+    series_total = Series(data_total, title="Total")
+    series_total.graphicalProperties.line.solidFill = "000000"  # Negro
+    series_total.graphicalProperties.line.width = 25000  # 2.5pt
+    
+    # Agregar etiquetas de datos a la línea
+    series_total.dLbls = DataLabelList()
+    series_total.dLbls.showVal = True
+    
+    # Combinar gráficos
+    chart1.y_axis.majorGridlines = None
+    chart1 += chart2
+    
+    # Posicionar gráfico en la hoja
+    chart_cell = f"A{start_row}"
+    worksheet.add_chart(chart1, chart_cell)
+    
+    logger.info("✓ Gráfica de tiempo robot creada")
+
 def aplicar_formato_completo_excel(archivo_excel):
     """
     Aplica TODO el formato en una sola función para evitar conflictos
@@ -218,322 +584,296 @@ def aplicar_formato_completo_excel(archivo_excel):
     try:
         # Cargar el workbook
         workbook = load_workbook(archivo_excel)
-        worksheet = workbook['Reporte']
         
-        # Encontrar índices de columnas
-        columnas = [cell.value for cell in worksheet[1]]
-        total_columnas = len(columnas)
-        total_filas = worksheet.max_row
+        # Primero procesar las nuevas hojas (si existen)
+        if 'Tiempo agente' in workbook.sheetnames:
+            logger.info("✓ Hoja 'Tiempo agente' encontrada, aplicando formato...")
         
-        logger.info(f"✓ Workbook cargado: {total_filas} filas × {total_columnas} columnas")
+        if 'Tiempo robot' in workbook.sheetnames:
+            logger.info("✓ Hoja 'Tiempo robot' encontrada, aplicando formato...")
         
-        # ============================================
-        # 1. PRIMERO: APLICAR FORMATO BASE A TODO EL DOCUMENTO
-        # ============================================
-        logger.info("\n🔤 APLICANDO FORMATO BASE (TIPOGRAFÍA Y BORDES BLANCOS)...")
-        
-        # Definir tipografía base
-        try:
-            # Intentar usar Univers Next, si no está disponible usar Calibri
-            base_font = Font(name="Univers Next for HSBC Light", size=10)
-            logger.info("   ✓ Usando tipografía 'Univers Next for HSBC Light'")
-        except:
-            # Fallback a Calibri (similar sans-serif)
-            base_font = Font(name="Calibri", size=10)
-            logger.info("   ⚠️ 'Univers Next for HSBC Light' no disponible, usando 'Calibri' como alternativa")
-        
-        # Definir bordes BLANCOS
-        white_border = Border(
-            left=Side(style='thin', color="FFFFFF"),      # Blanco
-            right=Side(style='thin', color="FFFFFF"),     # Blanco
-            top=Side(style='thin', color="FFFFFF"),       # Blanco
-            bottom=Side(style='thin', color="FFFFFF")     # Blanco
-        )
-        
-        # Aplicar formato base a TODAS las celdas (incluyendo encabezados inicialmente)
-        for row in worksheet.iter_rows(min_row=1, max_row=total_filas, min_col=1, max_col=total_columnas):
-            for cell in row:
-                cell.font = base_font
-                cell.border = white_border
-                cell.alignment = Alignment(vertical="center")
-        
-        logger.info(f"   ✓ Formato base aplicado a {total_filas} filas (bordes blancos)")
-        
-        # ============================================
-        # 2. APLICAR FORMATO ESPECÍFICO A ENCABEZADOS
-        # ============================================
-        logger.info("\n🔴 APLICANDO FORMATO ESPECIAL A ENCABEZADOS...")
-        
-        # Definir estilo para encabezados
-        header_fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")  # Rojo HSBC
-        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")  # Texto blanco, bold
-        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        
-        # Crear borde blanco especial para encabezados (más grueso para mejor contraste)
-        header_white_border = Border(
-            left=Side(style='medium', color="FFFFFF"),      # Blanco más grueso
-            right=Side(style='medium', color="FFFFFF"),     # Blanco más grueso
-            top=Side(style='medium', color="FFFFFF"),       # Blanco más grueso
-            bottom=Side(style='medium', color="FFFFFF")     # Blanco más grueso
-        )
-        
-        # Aplicar formato a todos los encabezados (fila 1)
-        for col in range(1, total_columnas + 1):
-            cell = worksheet.cell(row=1, column=col)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = header_alignment
-            cell.border = header_white_border
-        
-        logger.info(f"   ✓ Encabezados formateados: {total_columnas} columnas (fondo rojo, texto blanco, bordes blancos)")
-        
-        # ============================================
-        # 3. APLICAR FORMATO CONDICIONAL (COLORES POR CATEGORÍAS)
-        # ============================================
-        logger.info("\n🌈 APLICANDO FORMATO CONDICIONAL POR CATEGORÍAS...")
-        
-        # Encontrar índices de columnas objetivo
-        idx_categoria_agente = None
-        idx_categoria_robot = None
-        idx_categoria_cargos = None
-        
-        for idx, col_name in enumerate(columnas, start=1):
-            if col_name == "Categoria tiempo agente":
-                idx_categoria_agente = idx
-            elif col_name == "Categoria tiempo Alta robot":
-                idx_categoria_robot = idx
-            elif col_name == "Categoria de cargos":
-                idx_categoria_cargos = idx
-        
-        if idx_categoria_agente:
-            logger.info(f"✓ 'Categoria tiempo agente' en columna {get_column_letter(idx_categoria_agente)}")
-        if idx_categoria_robot:
-            logger.info(f"✓ 'Categoria tiempo Alta robot' en columna {get_column_letter(idx_categoria_robot)}")
-        if idx_categoria_cargos:
-            logger.info(f"✓ 'Categoria de cargos' en columna {get_column_letter(idx_categoria_cargos)}")
-        
-        # Definir colores para formato condicional
-        fill_verde_claro = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-        fill_verde = PatternFill(start_color="92D050", end_color="92D050", fill_type="solid")
-        fill_amarillo_claro = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-        fill_amarillo = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
-        fill_naranja = PatternFill(start_color="FF9966", end_color="FF9966", fill_type="solid")
-        fill_rojo = PatternFill(start_color="FF6666", end_color="FF6666", fill_type="solid")
-        fill_azul_claro = PatternFill(start_color="B4C6E7", end_color="B4C6E7", fill_type="solid")
-        fill_azul = PatternFill(start_color="8EA9DB", end_color="8EA9DB", fill_type="solid")
-        fill_negro = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
-        
-        # Colores para categorías de cargos
-        fill_cargos_verde_claro = PatternFill(start_color="E2F0D9", end_color="E2F0D9", fill_type="solid")
-        fill_cargos_verde = PatternFill(start_color="C5E0B4", end_color="C5E0B4", fill_type="solid")
-        fill_cargos_amarillo = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-        fill_cargos_naranja = PatternFill(start_color="F8CBAD", end_color="F8CBAD", fill_type="solid")
-        fill_cargos_rojo = PatternFill(start_color="F2A7A7", end_color="F2A7A7", fill_type="solid")
-        
-        # Aplicar formato condicional a cada fila
-        contador_formatos = 0
-        
-        for row in range(2, total_filas + 1):
-            # Formato para Categoría Tiempo Agente
+        # Ahora aplicar formato a la hoja 'Reporte'
+        if 'Reporte' in workbook.sheetnames:
+            worksheet = workbook['Reporte']
+            
+            # Encontrar índices de columnas
+            columnas = [cell.value for cell in worksheet[1]]
+            total_columnas = len(columnas)
+            total_filas = worksheet.max_row
+            
+            logger.info(f"✓ Workbook cargado: {total_filas} filas × {total_columnas} columnas")
+            
+            # ============================================
+            # 1. PRIMERO: APLICAR FORMATO BASE A TODO EL DOCUMENTO
+            # ============================================
+            logger.info("\n🔤 APLICANDO FORMATO BASE (TIPOGRAFÍA Y BORDES BLANCOS)...")
+            
+            # Definir tipografía base
+            try:
+                # Intentar usar Univers Next, si no está disponible usar Calibri
+                base_font = Font(name="Univers Next for HSBC Light", size=10)
+                logger.info("   ✓ Usando tipografía 'Univers Next for HSBC Light'")
+            except:
+                # Fallback a Calibri (similar sans-serif)
+                base_font = Font(name="Calibri", size=10)
+                logger.info("   ⚠️ 'Univers Next for HSBC Light' no disponible, usando 'Calibri' como alternativa")
+            
+            # Definir bordes BLANCOS
+            white_border = Border(
+                left=Side(style='thin', color="FFFFFF"),      # Blanco
+                right=Side(style='thin', color="FFFFFF"),     # Blanco
+                top=Side(style='thin', color="FFFFFF"),       # Blanco
+                bottom=Side(style='thin', color="FFFFFF")     # Blanco
+            )
+            
+            # Aplicar formato base a TODAS las celdas (incluyendo encabezados inicialmente)
+            for row in worksheet.iter_rows(min_row=1, max_row=total_filas, min_col=1, max_col=total_columnas):
+                for cell in row:
+                    cell.font = base_font
+                    cell.border = white_border
+                    cell.alignment = Alignment(vertical="center")
+            
+            logger.info(f"   ✓ Formato base aplicado a {total_filas} filas (bordes blancos)")
+            
+            # ============================================
+            # 2. APLICAR FORMATO ESPECÍFICO A ENCABEZADOS
+            # ============================================
+            logger.info("\n🔴 APLICANDO FORMATO ESPECIAL A ENCABEZADOS...")
+            
+            # Definir estilo para encabezados
+            header_fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")  # Rojo HSBC
+            header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")  # Texto blanco, bold
+            header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            
+            # Crear borde blanco especial para encabezados (más grueso para mejor contraste)
+            header_white_border = Border(
+                left=Side(style='medium', color="FFFFFF"),      # Blanco más grueso
+                right=Side(style='medium', color="FFFFFF"),     # Blanco más grueso
+                top=Side(style='medium', color="FFFFFF"),       # Blanco más grueso
+                bottom=Side(style='medium', color="FFFFFF")     # Blanco más grueso
+            )
+            
+            # Aplicar formato a todos los encabezados (fila 1)
+            for col in range(1, total_columnas + 1):
+                cell = worksheet.cell(row=1, column=col)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = header_alignment
+                cell.border = header_white_border
+            
+            logger.info(f"   ✓ Encabezados formateados: {total_columnas} columnas (fondo rojo, texto blanco, bordes blancos)")
+            
+            # ============================================
+            # 3. APLICAR FORMATO CONDICIONAL (COLORES POR CATEGORÍAS)
+            # ============================================
+            logger.info("\n🌈 APLICANDO FORMATO CONDICIONAL POR CATEGORÍAS...")
+            
+            # Encontrar índices de columnas objetivo
+            idx_categoria_agente = None
+            idx_categoria_robot = None
+            idx_categoria_cargos = None
+            
+            for idx, col_name in enumerate(columnas, start=1):
+                if col_name == "Categoria tiempo agente":
+                    idx_categoria_agente = idx
+                elif col_name == "Categoria tiempo Alta robot":
+                    idx_categoria_robot = idx
+                elif col_name == "Categoria de cargos":
+                    idx_categoria_cargos = idx
+            
             if idx_categoria_agente:
-                celda_agente = worksheet.cell(row=row, column=idx_categoria_agente)
-                valor_agente = celda_agente.value
-                
-                if valor_agente:
-                    if valor_agente == "menos de 1 min":
-                        celda_agente.fill = fill_verde_claro
-                    elif valor_agente == "menos de 1min 30seg":
-                        celda_agente.fill = fill_verde
-                    elif valor_agente == "1min 30seg a 3min":
-                        celda_agente.fill = fill_amarillo_claro
-                    elif valor_agente == "3min a 5min":
-                        celda_agente.fill = fill_amarillo
-                    elif valor_agente == "5min a 10min":
-                        celda_agente.fill = fill_naranja
-                    elif valor_agente == "más de 10min":
-                        celda_agente.fill = fill_rojo
-                    contador_formatos += 1
-            
-            # Formato para Categoría Tiempo Robot
+                logger.info(f"✓ 'Categoria tiempo agente' en columna {get_column_letter(idx_categoria_agente)}")
             if idx_categoria_robot:
-                celda_robot = worksheet.cell(row=row, column=idx_categoria_robot)
-                valor_robot = celda_robot.value
-                
-                if valor_robot:
-                    if valor_robot == "menos de 1min":
-                        celda_robot.fill = fill_verde_claro
-                    elif valor_robot == "1min a 1min 30seg":
-                        celda_robot.fill = fill_verde
-                    elif valor_robot == "1min 30seg a 3min":
-                        celda_robot.fill = fill_amarillo_claro
-                    elif valor_robot == "3min a 5min":
-                        celda_robot.fill = fill_amarillo
-                    elif valor_robot == "5min a 10min":
-                        celda_robot.fill = fill_naranja
-                    elif valor_robot == "10min a 15min":
-                        celda_robot.fill = fill_rojo
-                    elif valor_robot == "15min a 20min":
-                        celda_robot.fill = fill_azul_claro
-                    elif valor_robot == "20min a 25min":
-                        celda_robot.fill = fill_azul
-                    elif valor_robot == "Intervención manual (> 25min)":
-                        celda_robot.fill = fill_negro
-                        # Para celdas negras, mantener el texto blanco pero con la misma fuente base
-                        celda_robot.font = Font(name=celda_robot.font.name, 
-                                               size=celda_robot.font.size, 
-                                               color="FFFFFF")
-                    contador_formatos += 1
-            
-            # Formato para Categoría de Cargos
+                logger.info(f"✓ 'Categoria tiempo Alta robot' en columna {get_column_letter(idx_categoria_robot)}")
             if idx_categoria_cargos:
-                celda_cargos = worksheet.cell(row=row, column=idx_categoria_cargos)
-                valor_cargos = celda_cargos.value
+                logger.info(f"✓ 'Categoria de cargos' en columna {get_column_letter(idx_categoria_cargos)}")
+            
+            # Definir colores para formato condicional
+            fill_verde_claro = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+            fill_verde = PatternFill(start_color="92D050", end_color="92D050", fill_type="solid")
+            fill_amarillo_claro = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+            fill_amarillo = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+            fill_naranja = PatternFill(start_color="FF9966", end_color="FF9966", fill_type="solid")
+            fill_rojo = PatternFill(start_color="FF6666", end_color="FF6666", fill_type="solid")
+            fill_azul_claro = PatternFill(start_color="B4C6E7", end_color="B4C6E7", fill_type="solid")
+            fill_azul = PatternFill(start_color="8EA9DB", end_color="8EA9DB", fill_type="solid")
+            fill_negro = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
+            
+            # Colores para categorías de cargos
+            fill_cargos_verde_claro = PatternFill(start_color="E2F0D9", end_color="E2F0D9", fill_type="solid")
+            fill_cargos_verde = PatternFill(start_color="C5E0B4", end_color="C5E0B4", fill_type="solid")
+            fill_cargos_amarillo = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+            fill_cargos_naranja = PatternFill(start_color="F8CBAD", end_color="F8CBAD", fill_type="solid")
+            fill_cargos_rojo = PatternFill(start_color="F2A7A7", end_color="F2A7A7", fill_type="solid")
+            
+            # Aplicar formato condicional a cada fila
+            contador_formatos = 0
+            
+            for row in range(2, total_filas + 1):
+                # Formato para Categoría Tiempo Agente
+                if idx_categoria_agente:
+                    celda_agente = worksheet.cell(row=row, column=idx_categoria_agente)
+                    valor_agente = celda_agente.value
+                    
+                    if valor_agente:
+                        if valor_agente == "menos de 1 min":
+                            celda_agente.fill = fill_verde_claro
+                        elif valor_agente == "menos de 1min 30seg":
+                            celda_agente.fill = fill_verde
+                        elif valor_agente == "1min 30seg a 3min":
+                            celda_agente.fill = fill_amarillo_claro
+                        elif valor_agente == "3min a 5min":
+                            celda_agente.fill = fill_amarillo
+                        elif valor_agente == "5min a 10min":
+                            celda_agente.fill = fill_naranja
+                        elif valor_agente == "más de 10min":
+                            celda_agente.fill = fill_rojo
+                        contador_formatos += 1
                 
-                if valor_cargos:
-                    if valor_cargos == "1 cargo":
-                        celda_cargos.fill = fill_cargos_verde_claro
-                    elif valor_cargos == "2 a 5 cargos":
-                        celda_cargos.fill = fill_cargos_verde
-                    elif valor_cargos == "6 a 10 cargos":
-                        celda_cargos.fill = fill_cargos_amarillo
-                    elif valor_cargos in ["11 a 20 cargos", "21 a 30 cargos"]:
-                        celda_cargos.fill = fill_cargos_naranja
-                    else:
-                        celda_cargos.fill = fill_cargos_rojo
-                    contador_formatos += 1
-        
-        logger.info(f"   ✓ Formato condicional aplicado a {contador_formatos} celdas (con bordes blancos preservados)")
-        
-        # ============================================
-        # 4. APLICAR FORMATO ESPECIAL A COLUMNAS DE FECHA
-        # ============================================
-        logger.info("\n📅 APLICANDO FORMATO ESPECIAL A COLUMNAS DE FECHA...")
-        
-        # Identificar columnas de fecha
-        columnas_fecha_keywords = ['fecha', 'Fecha', 'FECHA', 'creacion', 'Creacion', 'enviado', 'Enviado', 
-                                  'asignacion', 'Asignacion', 'atendido', 'Atendido']
-        
-        columnas_fecha_indices = []
-        
-        for idx, col_name in enumerate(columnas, start=1):
-            if any(keyword in str(col_name) for keyword in columnas_fecha_keywords):
-                columnas_fecha_indices.append(idx)
-        
-        if columnas_fecha_indices:
-            logger.info(f"   Encontradas {len(columnas_fecha_indices)} columnas de fecha")
-            
-            # Aplicar formato de fecha a las columnas identificadas
-            date_format = 'yyyy-mm-dd hh:mm:ss'
-            
-            for fecha_idx in columnas_fecha_indices:
-                col_letter = get_column_letter(fecha_idx)
+                # Formato para Categoría Tiempo Robot
+                if idx_categoria_robot:
+                    celda_robot = worksheet.cell(row=row, column=idx_categoria_robot)
+                    valor_robot = celda_robot.value
+                    
+                    if valor_robot:
+                        if valor_robot == "menos de 1min":
+                            celda_robot.fill = fill_verde_claro
+                        elif valor_robot == "1min a 1min 30seg":
+                            celda_robot.fill = fill_verde
+                        elif valor_robot == "1min 30seg a 3min":
+                            celda_robot.fill = fill_amarillo_claro
+                        elif valor_robot == "3min a 5min":
+                            celda_robot.fill = fill_amarillo
+                        elif valor_robot == "5min a 10min":
+                            celda_robot.fill = fill_naranja
+                        elif valor_robot == "10min a 15min":
+                            celda_robot.fill = fill_rojo
+                        elif valor_robot == "15min a 20min":
+                            celda_robot.fill = fill_azul_claro
+                        elif valor_robot == "20min a 25min":
+                            celda_robot.fill = fill_azul
+                        elif valor_robot == "Intervención manual (> 25min)":
+                            celda_robot.fill = fill_negro
+                            # Para celdas negras, mantener el texto blanco pero con la misma fuente base
+                            celda_robot.font = Font(name=celda_robot.font.name, 
+                                                   size=celda_robot.font.size, 
+                                                   color="FFFFFF")
+                        contador_formatos += 1
                 
-                # Aplicar formato a todas las celdas en esta columna (excepto encabezado)
-                for row in range(2, total_filas + 1):
-                    cell = worksheet.cell(row=row, column=fecha_idx)
-                    # Solo aplicar formato si es una fecha/datetime
-                    if isinstance(cell.value, (datetime, pd.Timestamp)):
-                        cell.number_format = date_format
-        
-        # ============================================
-        # 5. AJUSTAR ANCHO DE COLUMNAS
-        # ============================================
-        logger.info("\n📏 AJUSTANDO ANCHO DE COLUMNAS...")
-        
-        for i, col in enumerate(worksheet.columns, start=1):
-            max_length = 0
-            column_letter = get_column_letter(i)
+                # Formato para Categoría de Cargos
+                if idx_categoria_cargos:
+                    celda_cargos = worksheet.cell(row=row, column=idx_categoria_cargos)
+                    valor_cargos = celda_cargos.value
+                    
+                    if valor_cargos:
+                        if valor_cargos == "1 cargo":
+                            celda_cargos.fill = fill_cargos_verde_claro
+                        elif valor_cargos == "2 a 5 cargos":
+                            celda_cargos.fill = fill_cargos_verde
+                        elif valor_cargos == "6 a 10 cargos":
+                            celda_cargos.fill = fill_cargos_amarillo
+                        elif valor_cargos in ["11 a 20 cargos", "21 a 30 cargos"]:
+                            celda_cargos.fill = fill_cargos_naranja
+                        else:
+                            celda_cargos.fill = fill_cargos_rojo
+                        contador_formatos += 1
             
-            # Encontrar el texto más largo en la columna
-            for cell in col:
-                try:
-                    cell_value = str(cell.value) if cell.value is not None else ""
-                    # Considerar saltos de línea en el cálculo
-                    lines = cell_value.split('\n')
-                    for line in lines:
-                        if len(line) > max_length:
-                            max_length = len(line)
-                except:
-                    pass
+            logger.info(f"   ✓ Formato condicional aplicado a {contador_formatos} celdas (con bordes blancos preservados)")
             
-            # Ajustar ancho (mínimo 10, máximo 50)
-            adjusted_width = min(max(max_length + 2, 10), 50)
-            worksheet.column_dimensions[column_letter].width = adjusted_width
+            # ============================================
+            # 4. APLICAR FORMATO ESPECIAL A COLUMNAS DE FECHA
+            # ============================================
+            logger.info("\n📅 APLICANDO FORMATO ESPECIAL A COLUMNAS DE FECHA...")
+            
+            # Identificar columnas de fecha
+            columnas_fecha_keywords = ['fecha', 'Fecha', 'FECHA', 'creacion', 'Creacion', 'enviado', 'Enviado', 
+                                      'asignacion', 'Asignacion', 'atendido', 'Atendido']
+            
+            columnas_fecha_indices = []
+            
+            for idx, col_name in enumerate(columnas, start=1):
+                if any(keyword in str(col_name) for keyword in columnas_fecha_keywords):
+                    columnas_fecha_indices.append(idx)
+            
+            if columnas_fecha_indices:
+                logger.info(f"   Encontradas {len(columnas_fecha_indices)} columnas de fecha")
+                
+                # Aplicar formato de fecha a las columnas identificadas
+                date_format = 'yyyy-mm-dd hh:mm:ss'
+                
+                for fecha_idx in columnas_fecha_indices:
+                    col_letter = get_column_letter(fecha_idx)
+                    
+                    # Aplicar formato a todas las celdas en esta columna (excepto encabezado)
+                    for row in range(2, total_filas + 1):
+                        cell = worksheet.cell(row=row, column=fecha_idx)
+                        # Solo aplicar formato si es una fecha/datetime
+                        if isinstance(cell.value, (datetime, pd.Timestamp)):
+                            cell.number_format = date_format
+            
+            # ============================================
+            # 5. AJUSTAR ANCHO DE COLUMNAS
+            # ============================================
+            logger.info("\n📏 AJUSTANDO ANCHO DE COLUMNAS...")
+            
+            for i, col in enumerate(worksheet.columns, start=1):
+                max_length = 0
+                column_letter = get_column_letter(i)
+                
+                # Encontrar el texto más largo en la columna
+                for cell in col:
+                    try:
+                        cell_value = str(cell.value) if cell.value is not None else ""
+                        # Considerar saltos de línea en el cálculo
+                        lines = cell_value.split('\n')
+                        for line in lines:
+                            if len(line) > max_length:
+                                max_length = len(line)
+                    except:
+                        pass
+                
+                # Ajustar ancho (mínimo 10, máximo 50)
+                adjusted_width = min(max(max_length + 2, 10), 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+            
+            logger.info("   ✓ Ancho de columnas ajustado")
+            
+            # ============================================
+            # 6. AJUSTAR ALTURA DE FILAS
+            # ============================================
+            logger.info("\n📊 AJUSTANDO ALTURA DE FILAS...")
+            
+            # Altura para encabezados
+            worksheet.row_dimensions[1].height = 25
+            
+            # Altura para filas de datos
+            for row in range(2, total_filas + 1):
+                worksheet.row_dimensions[row].height = 20
+            
+            logger.info("   ✓ Altura de filas ajustada")
+            
+            # ============================================
+            # 7. AGREGAR FILTROS
+            # ============================================
+            logger.info("\n🔍 AGREGANDO FILTROS AUTOMÁTICOS...")
+            
+            worksheet.auto_filter.ref = worksheet.dimensions
+            
+            logger.info("   ✓ Filtros agregados")
+            
+            # ============================================
+            # 8. CONGELAR PANELES
+            # ============================================
+            logger.info("\n📌 CONGELANDO PANELES...")
+            
+            worksheet.freeze_panes = "A2"
+            
+            logger.info("   ✓ Paneles congelados (fila 1 fija)")
         
-        logger.info("   ✓ Ancho de columnas ajustado")
-        
-        # ============================================
-        # 6. AJUSTAR ALTURA DE FILAS
-        # ============================================
-        logger.info("\n📊 AJUSTANDO ALTURA DE FILAS...")
-        
-        # Altura para encabezados
-        worksheet.row_dimensions[1].height = 25
-        
-        # Altura para filas de datos
-        for row in range(2, total_filas + 1):
-            worksheet.row_dimensions[row].height = 20
-        
-        logger.info("   ✓ Altura de filas ajustada")
-        
-        # ============================================
-        # 7. AGREGAR FILTROS
-        # ============================================
-        logger.info("\n🔍 AGREGANDO FILTROS AUTOMÁTICOS...")
-        
-        worksheet.auto_filter.ref = worksheet.dimensions
-        
-        logger.info("   ✓ Filtros agregados")
-        
-        # ============================================
-        # 8. CONGELAR PANELES
-        # ============================================
-        logger.info("\n📌 CONGELANDO PANELES...")
-        
-        worksheet.freeze_panes = "A2"
-        
-        logger.info("   ✓ Paneles congelados (fila 1 fija)")
-        
-        # ============================================
-        # 9. GUARDAR CAMBIOS
-        # ============================================
+        # Guardar el workbook
         workbook.save(archivo_excel)
         logger.info(f"\n✅ FORMATO COMPLETO APLICADO CORRECTAMENTE")
         logger.info(f"   📁 Archivo: {archivo_excel.name}")
-        logger.info(f"   📊 Dimensiones: {total_filas} filas × {total_columnas} columnas")
-        
-        # Resumen detallado
-        logger.info("\n📋 RESUMEN DE FORMATO APLICADO:")
-        logger.info("="*60)
-        logger.info("1. FORMATO BASE:")
-        logger.info("   • Tipografía: Univers Next for HSBC Light (10pt)")
-        logger.info("   • Bordes: Finos BLANCOS en todas las celdas")
-        logger.info("   • Alineación: Centrado vertical")
-        
-        logger.info("\n2. ENCABEZADOS:")
-        logger.info("   • Fondo: Rojo HSBC (#C00000)")
-        logger.info("   • Texto: Blanco, bold, Calibri 11pt")
-        logger.info("   • Bordes: BLANCOS más gruesos")
-        logger.info("   • Alineación: Centrado horizontal/vertical")
-        logger.info("   • Altura: 25px")
-        
-        logger.info("\n3. FORMATO CONDICIONAL:")
-        logger.info("   • Categorías tiempo agente: Escala verde → rojo")
-        logger.info("   • Categorías tiempo robot: Escala verde → negro")
-        logger.info("   • Categorías cargos: Escala verde claro → rojo claro")
-        logger.info("   • Intervenciones manuales: Negro con texto blanco")
-        logger.info("   • TODOS con bordes blancos preservados")
-        
-        logger.info("\n4. COLUMNAS DE FECHA:")
-        logger.info("   • Formato: yyyy-mm-dd hh:mm:ss")
-        logger.info(f"   • Columnas identificadas: {len(columnas_fecha_indices)}")
-        
-        logger.info("\n5. OTROS AJUSTES:")
-        logger.info("   • Ancho columnas: Auto-ajustado (10-50px)")
-        logger.info("   • Altura filas datos: 20px")
-        logger.info("   • Filtros: Habilitados")
-        logger.info("   • Paneles: Congelados (fila 1)")
-        logger.info("="*60)
         
     except Exception as e:
         logger.error(f"❌ Error aplicando formato completo: {e}")
@@ -801,17 +1141,40 @@ def calcular_categorias_cargos(df):
     
     return df
 
+def procesar_y_crear_hojas_tiempos(df_final, archivo_excel):
+    """
+    Procesa los datos y crea las hojas de tiempos después del archivo inicial
+    """
+    logger.info("\n📊 PROCESANDO DATOS PARA HERRAMIENTAS DE TIEMPO...")
+    
+    try:
+        # Cargar el workbook existente
+        workbook = load_workbook(archivo_excel)
+        
+        # Crear hoja de tiempo agente
+        crear_hoja_tiempo_agente(workbook, df_final)
+        
+        # Crear hoja de tiempo robot
+        crear_hoja_tiempo_robot(workbook, df_final)
+        
+        # Guardar los cambios
+        workbook.save(archivo_excel)
+        
+        logger.info("✅ Hojas de tiempo creadas exitosamente")
+        
+    except Exception as e:
+        logger.error(f"❌ Error creando hojas de tiempo: {e}")
+        import traceback
+        logger.error(f"Detalles: {traceback.format_exc()}")
+
 # =========================
 # MAIN
 # =========================
 def main():
     logger.info("🚀 Generando Reporte Excel Aclarapp con cálculos de tiempo y categorías")
-    logger.info("💡 NUEVA CARACTERÍSTICA: Categoría 'Intervención manual' para tiempos de robot > 25min")
+    logger.info("💡 NUEVA CARACTERÍSTICA: Análisis de tiempos por día en hojas separadas")
+    logger.info("📊 NUEVA CARACTERÍSTICA: Gráficas combinadas (barras + línea)")
     logger.info("🎨 NUEVA CARACTERÍSTICA: Formato completo unificado")
-    logger.info("💰 NUEVA CARACTERÍSTICA: Categorías de cargos desde columna 'Cargos'")
-    logger.info("🔴 NUEVA CARACTERÍSTICA: Encabezados rojos con texto blanco y bordes blancos")
-    logger.info("🔤 NUEVA CARACTERÍSTICA: Tipografía 'Univers Next for HSBC Light'")
-    logger.info("⚪ NUEVA CARACTERÍSTICA: Bordes blancos en todas las celdas")
 
     # =========================
     # CARGA CSV
@@ -1002,6 +1365,11 @@ def main():
     logger.info(f"📁 Ubicación: {OUTPUT_FILE}")
     
     # =========================
+    # CREAR HOJAS DE TIEMPO
+    # =========================
+    procesar_y_crear_hojas_tiempos(df_final, OUTPUT_FILE)
+    
+    # =========================
     # APLICAR FORMATO COMPLETO EN UNA SOLA PASADA
     # =========================
     aplicar_formato_completo_excel(OUTPUT_FILE)
@@ -1011,6 +1379,11 @@ def main():
     logger.info("="*60)
     logger.info(f"Archivo: {OUTPUT_FILE.name}")
     logger.info(f"Total filas: {len(df_final)}")
+    logger.info(f"Hojas creadas: {len(load_workbook(OUTPUT_FILE).sheetnames)}")
+    
+    # Mostrar nombres de hojas
+    workbook = load_workbook(OUTPUT_FILE)
+    logger.info(f"Lista de hojas: {workbook.sheetnames}")
     
     # Resumen de categorías
     if "Categoria tiempo agente" in df_final.columns:
@@ -1031,6 +1404,12 @@ def main():
     if "Categoria de cargos" in df_final.columns:
         total_cat = df_final["Categoria de cargos"].notna().sum()
         logger.info(f"Categorías de cargos calculadas: {total_cat}")
+    
+    logger.info("\n🎯 NUEVAS HERRAMIENTAS DISPONIBLES:")
+    logger.info("1. Hoja 'Tiempo agente': Distribución diaria de categorías")
+    logger.info("2. Hoja 'Tiempo robot': Distribución diaria de categorías")
+    logger.info("3. Gráficas combinadas (barras + línea) para últimos 7 días")
+    logger.info("4. Tablas con totales diarios por categoría")
     
     logger.info("\n✅ PROCESO COMPLETADO EXITOSAMENTE")
     logger.info("="*60)
