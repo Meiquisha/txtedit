@@ -11,6 +11,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.chart import BarChart, LineChart, Reference, Series
 from openpyxl.chart.label import DataLabelList
 from openpyxl.chart.axis import DateAxis
+from openpyxl.formatting.rule import DataBarRule, ColorScaleRule, IconSetRule
 
 # =========================
 # LOGGING
@@ -211,6 +212,314 @@ def categorizar_numero_cargos(num_cargos):
         return "91 a 100 cargos"
     else:  # > 100
         return "más de 100 cargos"
+
+def crear_hoja_comparativa_agentes(workbook, df):
+    """
+    Crea hoja 'Comparativa Agentes' con dos tablas:
+    1. Por Site
+    2. Por Nombre Agente
+    """
+    logger.info("\n📊 CREANDO HOJA 'COMPARATIVA AGENTES'...")
+    
+    # Crear nueva hoja
+    ws = workbook.create_sheet(title="Comparativa Agentes")
+    
+    # Verificar que tenemos los datos necesarios
+    if "Fecha" not in df.columns or "Site" not in df.columns or "Nombre Agente" not in df.columns:
+        logger.warning("⚠️ Datos insuficientes para crear hoja 'Comparativa Agentes'")
+        ws["A1"] = "Datos insuficientes"
+        return
+    
+    # Crear copia del DataFrame para procesar
+    df_comparativa = df[["Fecha", "Site", "Nombre Agente"]].copy()
+    
+    # Extraer solo la fecha (sin hora) y convertir a formato dia-mes
+    df_comparativa["Fecha"] = pd.to_datetime(df_comparativa["Fecha"]).dt.date
+    
+    # Ordenar por fecha
+    df_comparativa = df_comparativa.sort_values("Fecha")
+    
+    # Obtener todas las fechas únicas y formatearlas
+    fechas_unicas = sorted(df_comparativa["Fecha"].unique())
+    fechas_formateadas = [fecha.strftime("%d-%b") for fecha in fechas_unicas]
+    
+    # Reemplazar valores NaN en Site y Nombre Agente
+    df_comparativa["Site"] = df_comparativa["Site"].fillna("Sin Site")
+    df_comparativa["Nombre Agente"] = df_comparativa["Nombre Agente"].fillna("Sin Agente")
+    
+    # ============================================
+    # TABLA 1: POR SITE
+    # ============================================
+    logger.info("📈 Creando tabla por Site...")
+    
+    # Crear tabla pivote para Site
+    pivot_site = pd.pivot_table(
+        df_comparativa,
+        index="Site",
+        columns="Fecha",
+        aggfunc="size",
+        fill_value=0
+    )
+    
+    # Reordenar columnas por fecha
+    pivot_site = pivot_site[fechas_unicas]
+    
+    # Renombrar columnas con formato dia-mes
+    pivot_site.columns = fechas_formateadas
+    
+    # Calcular total por site
+    pivot_site["Total"] = pivot_site.sum(axis=1)
+    
+    # Ordenar por total descendente
+    pivot_site = pivot_site.sort_values("Total", ascending=False)
+    
+    # Escribir tabla por Site en Excel
+    fila_actual = 1
+    
+    # Título de la tabla
+    ws.cell(row=fila_actual, column=1, value="COMPARATIVA POR SITE")
+    ws.cell(row=fila_actual, column=1).font = Font(name="Calibri", size=14, bold=True, color="C00000")
+    fila_actual += 1
+    
+    # Encabezados de tabla
+    ws.cell(row=fila_actual, column=1, value="Site")
+    for i, fecha in enumerate(fechas_formateadas, start=2):
+        ws.cell(row=fila_actual, column=i, value=fecha)
+    ws.cell(row=fila_actual, column=len(fechas_formateadas)+2, value="Total")
+    
+    # Formato encabezados
+    for col in range(1, len(fechas_formateadas)+3):
+        celda = ws.cell(row=fila_actual, column=col)
+        celda.fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
+        celda.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        celda.alignment = Alignment(horizontal="center", vertical="center")
+    
+    fila_actual += 1
+    
+    # Escribir datos de Site
+    for site_idx, (site, fila) in enumerate(pivot_site.iterrows(), start=0):
+        ws.cell(row=fila_actual, column=1, value=site)
+        
+        # Datos por fecha
+        for fecha_idx, fecha in enumerate(fechas_formateadas, start=2):
+            valor = int(fila[fecha])
+            ws.cell(row=fila_actual, column=fecha_idx, value=valor)
+        
+        # Total
+        ws.cell(row=fila_actual, column=len(fechas_formateadas)+2, value=int(fila["Total"]))
+        fila_actual += 1
+    
+    # Guardar posición final de tabla Site
+    fin_tabla_site = fila_actual - 1
+    num_sites = len(pivot_site)
+    
+    # ============================================
+    # TABLA 2: POR NOMBRE AGENTE
+    # ============================================
+    logger.info("👤 Creando tabla por Nombre Agente...")
+    
+    # Crear tabla pivote para Nombre Agente
+    pivot_agente = pd.pivot_table(
+        df_comparativa,
+        index="Nombre Agente",
+        columns="Fecha",
+        aggfunc="size",
+        fill_value=0
+    )
+    
+    # Reordenar columnas por fecha
+    pivot_agente = pivot_agente[fechas_unicas]
+    
+    # Renombrar columnas con formato dia-mes
+    pivot_agente.columns = fechas_formateadas
+    
+    # Calcular total por agente
+    pivot_agente["Total"] = pivot_agente.sum(axis=1)
+    
+    # Ordenar por total descendente
+    pivot_agente = pivot_agente.sort_values("Total", ascending=False)
+    
+    # Dejar espacio entre tablas
+    fila_actual += 3
+    
+    # Título de la tabla
+    ws.cell(row=fila_actual, column=1, value="COMPARATIVA POR AGENTE")
+    ws.cell(row=fila_actual, column=1).font = Font(name="Calibri", size=14, bold=True, color="C00000")
+    fila_actual += 1
+    
+    # Encabezados de tabla
+    ws.cell(row=fila_actual, column=1, value="Agente")
+    for i, fecha in enumerate(fechas_formateadas, start=2):
+        ws.cell(row=fila_actual, column=i, value=fecha)
+    ws.cell(row=fila_actual, column=len(fechas_formateadas)+2, value="Total")
+    
+    # Formato encabezados
+    for col in range(1, len(fechas_formateadas)+3):
+        celda = ws.cell(row=fila_actual, column=col)
+        celda.fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
+        celda.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        celda.alignment = Alignment(horizontal="center", vertical="center")
+    
+    fila_actual += 1
+    
+    # Escribir datos de Agente
+    for agente_idx, (agente, fila) in enumerate(pivot_agente.iterrows(), start=0):
+        ws.cell(row=fila_actual, column=1, value=agente)
+        
+        # Datos por fecha
+        for fecha_idx, fecha in enumerate(fechas_formateadas, start=2):
+            valor = int(fila[fecha])
+            ws.cell(row=fila_actual, column=fecha_idx, value=valor)
+        
+        # Total
+        ws.cell(row=fila_actual, column=len(fechas_formateadas)+2, value=int(fila["Total"]))
+        fila_actual += 1
+    
+    # Guardar posición final de tabla Agente
+    inicio_tabla_agente = fila_actual - len(pivot_agente)
+    fin_tabla_agente = fila_actual - 1
+    num_agentes = len(pivot_agente)
+    
+    # ============================================
+    # APLICAR FORMATOS CONDICIONALES
+    # ============================================
+    logger.info("🎨 Aplicando formatos condicionales...")
+    
+    # Aplicar barras de datos degradadas rojas a ambas tablas
+    # Color rojo degradado: FF6666 (claro) a C00000 (oscuro)
+    
+    # Para tabla Site
+    inicio_datos_site = fin_tabla_site - num_sites + 1
+    inicio_datos_agente = inicio_tabla_agente + 1
+    
+    # Definir regla de barras de datos rojas
+    data_bar_rule = DataBarRule(
+        start_type="min",
+        start_value=0,
+        end_type="max",
+        end_value=None,
+        color="FF6666"  # Rojo claro para el degradado
+    )
+    
+    # Aplicar a todas las columnas de fechas en tabla Site
+    for col_idx in range(2, len(fechas_formateadas) + 2):  # Columnas B en adelante
+        col_letter = get_column_letter(col_idx)
+        rango_site = f"{col_letter}{inicio_datos_site}:{col_letter}{fin_tabla_site}"
+        ws.conditional_formatting.add(rango_site, data_bar_rule)
+    
+    # Aplicar a columna Total de Site
+    col_total_site = get_column_letter(len(fechas_formateadas) + 2)
+    rango_total_site = f"{col_total_site}{inicio_datos_site}:{col_total_site}{fin_tabla_site}"
+    
+    # Para total usar una regla diferente (más oscura)
+    data_bar_total_rule = DataBarRule(
+        start_type="min",
+        start_value=0,
+        end_type="max",
+        end_value=None,
+        color="C00000"  # Rojo HSBC más oscuro
+    )
+    ws.conditional_formatting.add(rango_total_site, data_bar_total_rule)
+    
+    # Aplicar a todas las columnas de fechas en tabla Agente
+    for col_idx in range(2, len(fechas_formateadas) + 2):  # Columnas B en adelante
+        col_letter = get_column_letter(col_idx)
+        rango_agente = f"{col_letter}{inicio_datos_agente}:{col_letter}{fin_tabla_agente}"
+        ws.conditional_formatting.add(rango_agente, data_bar_rule)
+    
+    # Aplicar a columna Total de Agente
+    col_total_agente = get_column_letter(len(fechas_formateadas) + 2)
+    rango_total_agente = f"{col_total_agente}{inicio_datos_agente}:{col_total_agente}{fin_tabla_agente}"
+    ws.conditional_formatting.add(rango_total_agente, data_bar_total_rule)
+    
+    # ============================================
+    # APLICAR FORMATO DE TABLA
+    # ============================================
+    
+    # Definir bordes
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Aplicar bordes a tabla Site
+    for row in range(inicio_datos_site - 1, fin_tabla_site + 1):  # Incluye encabezado
+        for col in range(1, len(fechas_formateadas) + 3):
+            ws.cell(row=row, column=col).border = thin_border
+    
+    # Aplicar bordes a tabla Agente
+    for row in range(inicio_datos_agente - 1, fin_tabla_agente + 1):  # Incluye encabezado
+        for col in range(1, len(fechas_formateadas) + 3):
+            ws.cell(row=row, column=col).border = thin_border
+    
+    # Ajustar alineación y formato de celdas
+    for row in ws.iter_rows(min_row=1, max_row=fin_tabla_agente, min_col=1, max_col=len(fechas_formateadas)+3):
+        for cell in row:
+            if cell.column > 1:  # Todas las columnas excepto la primera (Site/Agente)
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                if cell.value and isinstance(cell.value, (int, float)):
+                    cell.number_format = '#,##0'
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+    
+    # ============================================
+    # AJUSTAR ANCHO DE COLUMNAS
+    # ============================================
+    
+    # Para la primera columna (Site/Agente)
+    ws.column_dimensions['A'].width = 25
+    
+    # Para columnas de fechas
+    for col_idx in range(2, len(fechas_formateadas) + 2):
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = 10
+    
+    # Para columna Total
+    col_total = get_column_letter(len(fechas_formateadas) + 2)
+    ws.column_dimensions[col_total].width = 12
+    
+    # ============================================
+    # AGREGAR FILTROS
+    # ============================================
+    
+    # Filtros para tabla Site
+    ws.auto_filter.ref = f"A{inicio_datos_site - 1}:{col_total}{fin_tabla_site}"
+    
+    # Filtros para tabla Agente
+    ws.auto_filter.ref = f"A{inicio_datos_agente - 1}:{col_total}{fin_tabla_agente}"
+    
+    # ============================================
+    # AGREGAR INFORMACIÓN DE RESUMEN
+    # ============================================
+    
+    # Calcular totales generales
+    total_general_site = pivot_site["Total"].sum()
+    total_general_agente = pivot_agente["Total"].sum()
+    
+    # Mostrar resumen en log
+    logger.info(f"✓ Tabla por Site: {num_sites} sites, {len(fechas_formateadas)} días, {total_general_site} casos totales")
+    logger.info(f"✓ Tabla por Agente: {num_agentes} agentes, {len(fechas_formateadas)} días, {total_general_agente} casos totales")
+    
+    # Agregar nota al final del documento
+    nota_fila = fin_tabla_agente + 3
+    ws.cell(row=nota_fila, column=1, value="NOTAS:")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=10, bold=True, italic=True, color="666666")
+    
+    nota_fila += 1
+    ws.cell(row=nota_fila, column=1, value="1. Las barras rojas degradadas muestran la distribución de casos por día.")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
+    
+    nota_fila += 1
+    ws.cell(row=nota_fila, column=1, value="2. Use los filtros en los encabezados para ordenar o filtrar los datos.")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
+    
+    nota_fila += 1
+    ws.cell(row=nota_fila, column=1, value=f"3. Período analizado: {fechas_formateadas[0]} al {fechas_formateadas[-1]} ({len(fechas_formateadas)} días)")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
+    
+    logger.info("✅ Hoja 'Comparativa Agentes' creada exitosamente")
 
 def crear_hoja_tiempo_agente(workbook, df):
     """
@@ -1228,10 +1537,13 @@ def procesar_y_crear_hojas_tiempos(df_final, archivo_excel):
         # Crear hoja de tiempo robot
         crear_hoja_tiempo_robot(workbook, df_final)
         
+        # Crear hoja Comparativa Agentes (NUEVA)
+        crear_hoja_comparativa_agentes(workbook, df_final)
+        
         # Guardar los cambios
         workbook.save(archivo_excel)
         
-        logger.info("✅ Hojas de tiempo creadas exitosamente")
+        logger.info("✅ Hojas de tiempo y comparativa creadas exitosamente")
         
     except Exception as e:
         logger.error(f"❌ Error creando hojas de tiempo: {e}")
@@ -1247,6 +1559,7 @@ def main():
     logger.info("📊 NUEVA CARACTERÍSTICA: Gráficas de COLUMNAS APILADAS + línea")
     logger.info("🔧 NUEVA CARACTERÍSTICA: Filtros en tablas para seleccionar rangos personalizados")
     logger.info("📈 NUEVA CARACTERÍSTICA: ÚLTIMOS 7 días automáticamente en gráficas")
+    logger.info("👥 NUEVA CARACTERÍSTICA: Hoja 'Comparativa Agentes' con análisis por site y agente")
 
     # =========================
     # CARGA CSV
@@ -1375,6 +1688,11 @@ def main():
     if "Nombre Agente" not in df.columns:
         logger.warning("⚠️ No se encontró columna para 'Nombre Agente'")
         df["Nombre Agente"] = None
+    
+    # Asegurar que la columna Site exista
+    if "Site" not in df.columns:
+        logger.warning("⚠️ No se encontró columna 'Site'. Creando columna vacía...")
+        df["Site"] = "Sin Site"
 
     # =========================
     # VERIFICAR COLUMNAS ANTES DE SELECCIÓN
@@ -1437,7 +1755,7 @@ def main():
     logger.info(f"📁 Ubicación: {OUTPUT_FILE}")
     
     # =========================
-    # CREAR HOJAS DE TIEMPO
+    # CREAR HOJAS DE TIEMPO Y COMPARATIVA
     # =========================
     procesar_y_crear_hojas_tiempos(df_final, OUTPUT_FILE)
     
@@ -1482,15 +1800,23 @@ def main():
     logger.info("\n🎯 NUEVAS HERRAMIENTAS DISPONIBLES:")
     logger.info("1. Hoja 'Tiempo agente': Distribución diaria de categorías")
     logger.info("2. Hoja 'Tiempo robot': Distribución diaria de categorías")
-    logger.info("3. Gráficas de COLUMNAS APILADAS + línea de totales")
-    logger.info("4. Gráficas muestran AUTOMÁTICAMENTE los ÚLTIMOS 7 días")
-    logger.info("5. Tablas con filtros para seleccionar rangos personalizados")
-    logger.info("6. Gráficas posicionadas al lado derecho de las tablas")
+    logger.info("3. Hoja 'Comparativa Agentes': Análisis por Site y Agente")
+    logger.info("4. Gráficas de COLUMNAS APILADAS + línea de totales")
+    logger.info("5. Gráficas muestran AUTOMÁTICAMENTE los ÚLTIMOS 7 días")
+    logger.info("6. Tablas con filtros para seleccionar rangos personalizados")
+    logger.info("7. Gráficas posicionadas al lado derecho de las tablas")
+    logger.info("8. Barras de datos degradadas rojas en tabla comparativa")
     
     logger.info("\n🔧 CÓMO USAR LOS FILTROS:")
     logger.info("- Haz clic en los filtros de la columna 'Fecha'")
     logger.info("- Selecciona el rango de fechas que deseas analizar")
     logger.info("- La gráfica se actualizará automáticamente con la selección")
+    
+    logger.info("\n📊 HOJA 'COMPARATIVA AGENTES':")
+    logger.info("- Tabla 1: Casos por Site y día")
+    logger.info("- Tabla 2: Casos por Agente y día")
+    logger.info("- Barras rojas degradadas muestran distribución")
+    logger.info("- Filtros en encabezados para ordenar datos")
     
     logger.info("\n✅ PROCESO COMPLETADO EXITOSAMENTE")
     logger.info("="*60)
