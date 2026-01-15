@@ -230,34 +230,34 @@ def aplicar_formato_completo_excel(archivo_excel):
         # ============================================
         # 1. PRIMERO: APLICAR FORMATO BASE A TODO EL DOCUMENTO
         # ============================================
-        logger.info("\n🔤 APLICANDO FORMATO BASE (TIPOGRAFÍA Y BORDES)...")
+        logger.info("\n🔤 APLICANDO FORMATO BASE (TIPOGRAFÍA Y BORDES BLANCOS)...")
         
         # Definir tipografía base
         try:
             # Intentar usar Univers Next, si no está disponible usar Calibri
-            base_font = Font(name="Univers Next for HSBC", size=10)
-            logger.info("   ✓ Usando tipografía 'Univers Next for HSBC'")
+            base_font = Font(name="Univers Next for HSBC Light", size=10)
+            logger.info("   ✓ Usando tipografía 'Univers Next for HSBC Light'")
         except:
             # Fallback a Calibri (similar sans-serif)
             base_font = Font(name="Calibri", size=10)
-            logger.info("   ⚠️ 'Univers Next for HSBC' no disponible, usando 'Calibri' como alternativa")
+            logger.info("   ⚠️ 'Univers Next for HSBC Light' no disponible, usando 'Calibri' como alternativa")
         
-        # Definir bordes
-        thin_border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
+        # Definir bordes BLANCOS
+        white_border = Border(
+            left=Side(style='thin', color="FFFFFF"),      # Blanco
+            right=Side(style='thin', color="FFFFFF"),     # Blanco
+            top=Side(style='thin', color="FFFFFF"),       # Blanco
+            bottom=Side(style='thin', color="FFFFFF")     # Blanco
         )
         
         # Aplicar formato base a TODAS las celdas (incluyendo encabezados inicialmente)
         for row in worksheet.iter_rows(min_row=1, max_row=total_filas, min_col=1, max_col=total_columnas):
             for cell in row:
                 cell.font = base_font
-                cell.border = thin_border
+                cell.border = white_border
                 cell.alignment = Alignment(vertical="center")
         
-        logger.info(f"   ✓ Formato base aplicado a {total_filas} filas")
+        logger.info(f"   ✓ Formato base aplicado a {total_filas} filas (bordes blancos)")
         
         # ============================================
         # 2. APLICAR FORMATO ESPECÍFICO A ENCABEZADOS
@@ -269,14 +269,23 @@ def aplicar_formato_completo_excel(archivo_excel):
         header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")  # Texto blanco, bold
         header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         
+        # Crear borde blanco especial para encabezados (más grueso para mejor contraste)
+        header_white_border = Border(
+            left=Side(style='medium', color="FFFFFF"),      # Blanco más grueso
+            right=Side(style='medium', color="FFFFFF"),     # Blanco más grueso
+            top=Side(style='medium', color="FFFFFF"),       # Blanco más grueso
+            bottom=Side(style='medium', color="FFFFFF")     # Blanco más grueso
+        )
+        
         # Aplicar formato a todos los encabezados (fila 1)
         for col in range(1, total_columnas + 1):
             cell = worksheet.cell(row=1, column=col)
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = header_alignment
+            cell.border = header_white_border
         
-        logger.info(f"   ✓ Encabezados formateados: {total_columnas} columnas")
+        logger.info(f"   ✓ Encabezados formateados: {total_columnas} columnas (fondo rojo, texto blanco, bordes blancos)")
         
         # ============================================
         # 3. APLICAR FORMATO CONDICIONAL (COLORES POR CATEGORÍAS)
@@ -369,6 +378,7 @@ def aplicar_formato_completo_excel(archivo_excel):
                         celda_robot.fill = fill_azul
                     elif valor_robot == "Intervención manual (> 25min)":
                         celda_robot.fill = fill_negro
+                        # Para celdas negras, mantener el texto blanco pero con la misma fuente base
                         celda_robot.font = Font(name=celda_robot.font.name, 
                                                size=celda_robot.font.size, 
                                                color="FFFFFF")
@@ -392,7 +402,7 @@ def aplicar_formato_completo_excel(archivo_excel):
                         celda_cargos.fill = fill_cargos_rojo
                     contador_formatos += 1
         
-        logger.info(f"   ✓ Formato condicional aplicado a {contador_formatos} celdas")
+        logger.info(f"   ✓ Formato condicional aplicado a {contador_formatos} celdas (con bordes blancos preservados)")
         
         # ============================================
         # 4. APLICAR FORMATO ESPECIAL A COLUMNAS DE FECHA
@@ -496,13 +506,14 @@ def aplicar_formato_completo_excel(archivo_excel):
         logger.info("\n📋 RESUMEN DE FORMATO APLICADO:")
         logger.info("="*60)
         logger.info("1. FORMATO BASE:")
-        logger.info("   • Tipografía: Univers Next for HSBC (10pt)")
-        logger.info("   • Bordes: Finos en todas las celdas")
+        logger.info("   • Tipografía: Univers Next for HSBC Light (10pt)")
+        logger.info("   • Bordes: Finos BLANCOS en todas las celdas")
         logger.info("   • Alineación: Centrado vertical")
         
         logger.info("\n2. ENCABEZADOS:")
         logger.info("   • Fondo: Rojo HSBC (#C00000)")
         logger.info("   • Texto: Blanco, bold, Calibri 11pt")
+        logger.info("   • Bordes: BLANCOS más gruesos")
         logger.info("   • Alineación: Centrado horizontal/vertical")
         logger.info("   • Altura: 25px")
         
@@ -511,6 +522,7 @@ def aplicar_formato_completo_excel(archivo_excel):
         logger.info("   • Categorías tiempo robot: Escala verde → negro")
         logger.info("   • Categorías cargos: Escala verde claro → rojo claro")
         logger.info("   • Intervenciones manuales: Negro con texto blanco")
+        logger.info("   • TODOS con bordes blancos preservados")
         
         logger.info("\n4. COLUMNAS DE FECHA:")
         logger.info("   • Formato: yyyy-mm-dd hh:mm:ss")
@@ -797,8 +809,9 @@ def main():
     logger.info("💡 NUEVA CARACTERÍSTICA: Categoría 'Intervención manual' para tiempos de robot > 25min")
     logger.info("🎨 NUEVA CARACTERÍSTICA: Formato completo unificado")
     logger.info("💰 NUEVA CARACTERÍSTICA: Categorías de cargos desde columna 'Cargos'")
-    logger.info("🔴 NUEVA CARACTERÍSTICA: Encabezados rojos con texto blanco")
-    logger.info("🔤 NUEVA CARACTERÍSTICA: Tipografía 'Univers Next for HSBC light'")
+    logger.info("🔴 NUEVA CARACTERÍSTICA: Encabezados rojos con texto blanco y bordes blancos")
+    logger.info("🔤 NUEVA CARACTERÍSTICA: Tipografía 'Univers Next for HSBC Light'")
+    logger.info("⚪ NUEVA CARACTERÍSTICA: Bordes blancos en todas las celdas")
 
     # =========================
     # CARGA CSV
