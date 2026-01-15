@@ -226,19 +226,21 @@ def aplicar_formato_condicional_excel(archivo_excel):
         # Encontrar índices de columnas objetivo
         idx_categoria_agente = None
         idx_categoria_robot = None
+        idx_categoria_cargos = None
         
         for idx, col_name in enumerate(columnas, start=1):
             if col_name == "Categoria tiempo agente":
                 idx_categoria_agente = idx
             elif col_name == "Categoria tiempo Alta robot":
                 idx_categoria_robot = idx
-        
-        if idx_categoria_agente is None or idx_categoria_robot is None:
-            logger.warning("⚠️ No se encontraron las columnas para formato condicional")
-            return
+            elif col_name == "Categoria de cargos":
+                idx_categoria_cargos = idx
         
         logger.info(f"✓ Columna 'Categoria tiempo agente' encontrada en índice: {idx_categoria_agente}")
         logger.info(f"✓ Columna 'Categoria tiempo Alta robot' encontrada en índice: {idx_categoria_robot}")
+        logger.info(f"✓ Columna 'Categoria de cargos' encontrada en índice: {idx_categoria_cargos}")
+        
+        total_filas = worksheet.max_row
         
         # ============================================
         # 1. FORMATO PARA CATEGORÍA TIEMPO AGENTE
@@ -247,7 +249,6 @@ def aplicar_formato_condicional_excel(archivo_excel):
         logger.info("   Verde (rápido) → Amarillo → Rojo (lento)")
         
         # Definir reglas de formato condicional basadas en valores de texto
-        # Crear reglas para cada categoría de tiempo agente
         fill_verde_claro = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")  # Verde claro
         fill_verde = PatternFill(start_color="92D050", end_color="92D050", fill_type="solid")  # Verde
         fill_amarillo_claro = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")  # Amarillo claro
@@ -256,8 +257,6 @@ def aplicar_formato_condicional_excel(archivo_excel):
         fill_rojo = PatternFill(start_color="FF6666", end_color="FF6666", fill_type="solid")  # Rojo
         
         # Aplicar formato a cada fila basado en el valor de la celda
-        total_filas = worksheet.max_row
-        
         for row in range(2, total_filas + 1):
             celda_agente = worksheet.cell(row=row, column=idx_categoria_agente)
             valor_agente = celda_agente.value
@@ -288,9 +287,7 @@ def aplicar_formato_condicional_excel(archivo_excel):
         # Definir colores adicionales para robot
         fill_azul_claro = PatternFill(start_color="B4C6E7", end_color="B4C6E7", fill_type="solid")  # Azul claro
         fill_azul = PatternFill(start_color="8EA9DB", end_color="8EA9DB", fill_type="solid")  # Azul
-        fill_morado = PatternFill(start_color="C5A6D3", end_color="C5A6D3", fill_type="solid")  # Morado
         fill_negro = PatternFill(start_color="000000", end_color="000000", fill_type="solid")  # Negro
-        fill_texto_blanco = PatternFill(start_color="000000", end_color="000000", fill_type="solid")  # Negro para texto blanco
         
         for row in range(2, total_filas + 1):
             celda_robot = worksheet.cell(row=row, column=idx_categoria_robot)
@@ -321,7 +318,38 @@ def aplicar_formato_condicional_excel(archivo_excel):
         logger.info(f"   ✓ Formato aplicado a {total_filas - 1} filas")
         
         # ============================================
-        # 3. AJUSTAR ANCHO DE COLUMNAS CON FORMATO
+        # 3. FORMATO PARA CATEGORÍA DE CARGOS
+        # ============================================
+        logger.info("\n🔸 Aplicando escala de colores a 'Categoria de cargos':")
+        logger.info("   Verde claro (pocos) → Verde → Amarillo → Naranja → Rojo (muchos)")
+        
+        # Definir colores para categorías de cargos
+        fill_cargos_verde_claro = PatternFill(start_color="E2F0D9", end_color="E2F0D9", fill_type="solid")  # Verde muy claro
+        fill_cargos_verde = PatternFill(start_color="C5E0B4", end_color="C5E0B4", fill_type="solid")  # Verde claro
+        fill_cargos_amarillo = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")  # Amarillo claro
+        fill_cargos_naranja = PatternFill(start_color="F8CBAD", end_color="F8CBAD", fill_type="solid")  # Naranja claro
+        fill_cargos_rojo = PatternFill(start_color="F2A7A7", end_color="F2A7A7", fill_type="solid")  # Rojo claro
+        
+        for row in range(2, total_filas + 1):
+            celda_cargos = worksheet.cell(row=row, column=idx_categoria_cargos)
+            valor_cargos = celda_cargos.value
+            
+            if valor_cargos:
+                if valor_cargos == "1 cargo":
+                    celda_cargos.fill = fill_cargos_verde_claro
+                elif valor_cargos == "2 a 5 cargos":
+                    celda_cargos.fill = fill_cargos_verde
+                elif valor_cargos == "6 a 10 cargos":
+                    celda_cargos.fill = fill_cargos_amarillo
+                elif valor_cargos in ["11 a 20 cargos", "21 a 30 cargos"]:
+                    celda_cargos.fill = fill_cargos_naranja
+                else:
+                    celda_cargos.fill = fill_cargos_rojo
+        
+        logger.info(f"   ✓ Formato aplicado a {total_filas - 1} filas")
+        
+        # ============================================
+        # 4. AJUSTAR ANCHO DE COLUMNAS CON FORMATO
         # ============================================
         logger.info("\n📏 AJUSTANDO ANCHO DE COLUMNAS CON FORMATO...")
         
@@ -346,7 +374,7 @@ def aplicar_formato_condicional_excel(archivo_excel):
         logger.info("   ✓ Ancho de columnas ajustado")
         
         # ============================================
-        # 4. AGREGAR FILTROS A LAS COLUMNAS
+        # 5. AGREGAR FILTROS A LAS COLUMNAS
         # ============================================
         logger.info("\n🔍 AGREGANDO FILTROS A LAS COLUMNAS...")
         
@@ -356,7 +384,7 @@ def aplicar_formato_condicional_excel(archivo_excel):
         logger.info("   ✓ Filtros agregados")
         
         # ============================================
-        # 5. CONGELAR PANELES (PRIMERA FILA)
+        # 6. CONGELAR PANELES (PRIMERA FILA)
         # ============================================
         logger.info("\n📌 CONGELANDO PANELES (PRIMERA FILA)...")
         
@@ -388,6 +416,12 @@ def aplicar_formato_condicional_excel(archivo_excel):
         logger.info("  █ Azul claro      : 15min a 20min")
         logger.info("  █ Azul            : 20min a 25min")
         logger.info("  █ NEGRO (texto blanco) : Intervención manual (> 25min)")
+        logger.info("\nCATEGORÍA DE CARGOS:")
+        logger.info("  █ Verde muy claro : 1 cargo")
+        logger.info("  █ Verde claro     : 2 a 5 cargos")
+        logger.info("  █ Amarillo claro  : 6 a 10 cargos")
+        logger.info("  █ Naranja claro   : 11 a 30 cargos")
+        logger.info("  █ Rojo claro      : 31+ cargos")
         logger.info("="*60)
         
     except Exception as e:
@@ -570,18 +604,52 @@ def calcular_tiempos_agente_robot(df):
 
 def calcular_categorias_cargos(df):
     """
-    Calcula la categoría de cargos basada en el número de cargos
+    Calcula la categoría de cargos basada en la columna 'Cargos'
     """
-    logger.info("\n💰 CALCULANDO CATEGORÍAS DE CARGOS...")
+    logger.info("\n💰 CALCULANDO CATEGORÍAS DE CARGOS DESDE COLUMNA 'Cargos'...")
     
-    if "Numero de cargos" not in df.columns:
-        logger.warning("⚠️ Columna 'Numero de cargos' no encontrada")
-        df["Categoria de cargos"] = None
-        return df
+    # Primero, verificar si tenemos la columna 'Cargos'
+    if "Cargos" not in df.columns:
+        logger.warning("⚠️ Columna 'Cargos' no encontrada")
+        
+        # También verificar si hay 'Numero de cargos'
+        if "Numero de cargos" in df.columns:
+            logger.info("  Usando columna 'Numero de cargos' como alternativa...")
+            columna_cargos = "Numero de cargos"
+        else:
+            logger.warning("  ⚠️ No se encontró ninguna columna de cargos")
+            df["Numero de cargos"] = None
+            df["Categoria de cargos"] = None
+            return df
+    else:
+        columna_cargos = "Cargos"
+    
+    logger.info(f"  Usando columna: '{columna_cargos}'")
+    
+    # Convertir a numérico si no lo es
+    if columna_cargos == "Cargos":
+        # Crear columna 'Numero de cargos' a partir de 'Cargos'
+        logger.info("  Convirtiendo 'Cargos' a numérico...")
+        
+        # Intentar diferentes conversiones
+        df["Numero de cargos"] = pd.to_numeric(df[columna_cargos], errors='coerce')
+        
+        # Si falla la conversión directa, intentar extraer números del texto
+        if df["Numero de cargos"].isna().all():
+            logger.info("  Intentando extraer números del texto...")
+            # Extraer números del texto
+            df["Numero de cargos"] = (
+                df[columna_cargos]
+                .astype(str)
+                .str.extract(r'(\d+)')
+                .astype(float)
+            )
     
     # Calcular categorías
     valores_no_nulos = df["Numero de cargos"].notna().sum()
-    logger.info(f"  Filas con número de cargos válido: {valores_no_nulos}/{len(df)}")
+    total_filas = len(df)
+    
+    logger.info(f"  Filas con número de cargos válido: {valores_no_nulos}/{total_filas}")
     
     if valores_no_nulos > 0:
         # Aplicar categorización
@@ -589,19 +657,29 @@ def calcular_categorias_cargos(df):
         
         # Mostrar distribución
         logger.info("  Distribución de categorías de cargos:")
-        categorias = df["Categoria de cargos"].value_counts().head(10)
+        categorias = df["Categoria de cargos"].value_counts()
         for categoria, count in categorias.items():
             if pd.notna(categoria):
                 logger.info(f"    {categoria}: {count}")
+        
+        # Mostrar estadísticas
+        min_cargos = df["Numero de cargos"].min()
+        max_cargos = df["Numero de cargos"].max()
+        mean_cargos = df["Numero de cargos"].mean()
+        
+        logger.info(f"  Estadísticas de cargos:")
+        logger.info(f"    Mínimo: {min_cargos:.0f}")
+        logger.info(f"    Máximo: {max_cargos:.0f}")
+        logger.info(f"    Promedio: {mean_cargos:.1f}")
         
         # Mostrar un ejemplo
         idx_ejemplo = df[df["Categoria de cargos"].notna()].index[0]
         ejemplo = df.loc[idx_ejemplo]
         logger.info(f"  Ejemplo:")
+        logger.info(f"    Valor original en '{columna_cargos}': {ejemplo[columna_cargos]}")
         logger.info(f"    Número de cargos: {ejemplo['Numero de cargos']}")
         logger.info(f"    Categoría: {ejemplo['Categoria de cargos']}")
         
-        # Estadísticas
         total_categorias = df["Categoria de cargos"].notna().sum()
         logger.info(f"  Total categorizados: {total_categorias}")
     else:
@@ -617,12 +695,26 @@ def main():
     logger.info("🚀 Generando Reporte Excel Aclarapp con cálculos de tiempo y categorías")
     logger.info("💡 NUEVA CARACTERÍSTICA: Categoría 'Intervención manual' para tiempos de robot > 25min")
     logger.info("🎨 NUEVA CARACTERÍSTICA: Formato condicional con escala de colores")
+    logger.info("💰 NUEVA CARACTERÍSTICA: Categorías de cargos desde columna 'Cargos'")
 
     # =========================
     # CARGA CSV
     # =========================
     df = pd.read_csv(CSV_FILE, dtype=str, encoding="utf-8-sig")
     logger.info(f"✓ CSV cargado: {CSV_FILE.name} ({len(df)} filas)")
+    
+    # Mostrar primeras filas para diagnóstico
+    logger.info("\n🔍 PRIMERAS FILAS DEL CSV PARA DIAGNÓSTICO:")
+    logger.info(f"Columnas disponibles: {list(df.columns)}")
+    logger.info(f"Primeras filas - columnas relevantes:")
+    
+    # Verificar columnas específicas
+    columnas_relevantes = ['Cargos', 'Numero de cargos', 'Categoria de cargos']
+    for col in columnas_relevantes:
+        if col in df.columns:
+            logger.info(f"  ✓ '{col}': presente (ejemplo: {df[col].iloc[0] if len(df) > 0 else 'N/A'})")
+        else:
+            logger.info(f"  ⚠️ '{col}': NO encontrada")
 
     # =========================
     # VERIFICAR COLUMNAS DE FECHA EXISTENTES
@@ -715,7 +807,7 @@ def main():
     df = calcular_tiempos_agente_robot(df)
 
     # =========================
-    # CALCULAR CATEGORÍAS DE CARGOS
+    # CALCULAR CATEGORÍAS DE CARGOS (REVISADO)
     # =========================
     df = calcular_categorias_cargos(df)
 
@@ -723,17 +815,6 @@ def main():
     # OTRAS TRANSFORMACIONES
     # =========================
     logger.info("\n⚙️ APLICANDO OTRAS TRANSFORMACIONES...")
-    
-    # Convertir "Cargos" a número (si no se hizo antes)
-    if "Cargos" in df.columns and "Numero de cargos" not in df.columns:
-        df["Numero de cargos"] = pd.to_numeric(
-            df["Cargos"], errors="coerce"
-        )
-        logger.info(f"✓ 'Cargos' convertido a número para 'Numero de cargos'")
-    
-    # Si ya existe 'Numero de cargos' pero no tiene categorías, calcularlas
-    if "Numero de cargos" in df.columns and "Categoria de cargos" not in df.columns:
-        df = calcular_categorias_cargos(df)
     
     # Cambiar Estatus a "Exitoso"
     if "Estatus" in df.columns:
@@ -831,8 +912,16 @@ def main():
         categorias_cargos = df_final["Categoria de cargos"].value_counts()
         if not categorias_cargos.empty:
             logger.info("Distribución de categorías de cargos:")
-            for cat, count in categorias_cargos.head(5).items():
+            for cat, count in categorias_cargos.head(10).items():  # Mostrar más categorías
                 logger.info(f"  {cat}: {count}")
+        else:
+            logger.warning("⚠️ No se encontraron categorías de cargos")
+            # Verificar columnas relacionadas
+            if "Numero de cargos" in df_final.columns:
+                valores_validos = df_final["Numero de cargos"].notna().sum()
+                logger.info(f"  'Numero de cargos' tiene {valores_validos} valores válidos")
+            if "Cargos" in df_final.columns:
+                logger.info(f"  Columna 'Cargos' existe, primer valor: {df_final['Cargos'].iloc[0] if len(df_final) > 0 else 'N/A'}")
 
     # =========================
     # EXPORTAR EXCEL
@@ -903,10 +992,14 @@ def main():
     if "Categoria de cargos" in df_final.columns:
         total_cat = df_final["Categoria de cargos"].notna().sum()
         logger.info(f"Categorías de cargos calculadas: {total_cat}")
+        if total_cat == 0:
+            logger.warning("  ⚠️ Categorías de cargos están vacías")
+            logger.info(f"  Columnas relacionadas: {[col for col in df_final.columns if 'cargo' in col.lower()]}")
     
     logger.info("\n🎨 FORMATO APLICADO:")
     logger.info("   • Escala de colores en 'Categoria tiempo agente'")
     logger.info("   • Escala de colores en 'Categoria tiempo Alta robot'")
+    logger.info("   • Escala de colores en 'Categoria de cargos'")
     logger.info("   • Intervenciones manuales en NEGRO con texto blanco")
     logger.info("   • Filtros aplicados en todas las columnas")
     logger.info("   • Paneles congelados (primera fila fija)")
