@@ -1,3 +1,4 @@
+
 import pandas as pd
 import logging
 from pathlib import Path
@@ -217,21 +218,26 @@ def crear_hoja_comparativa_agentes(workbook, df):
     """
     Crea hoja 'Comparativa Agentes' con dos tablas:
     1. Por Site
-    2. Por Nombre Agente
+    2. Por Nombre Agente (con Site y Skill)
+    CON MEJORAS: Agente|Site|Skill|08-dic|09-dic|...|22-ene|Total
+    Y TOTAL DEL DÍA al final con fondo negro y letra blanca
     """
-    logger.info("\n📊 CREANDO HOJA 'COMPARATIVA AGENTES'...")
+    logger.info("\n📊 CREANDO HOJA 'COMPARATIVA AGENTES' MEJORADA...")
     
     # Crear nueva hoja
     ws = workbook.create_sheet(title="Comparativa Agentes")
     
     # Verificar que tenemos los datos necesarios
-    if "Fecha" not in df.columns or "Site" not in df.columns or "Nombre Agente" not in df.columns:
-        logger.warning("⚠️ Datos insuficientes para crear hoja 'Comparativa Agentes'")
-        ws["A1"] = "Datos insuficientes"
+    required_cols = ["Fecha", "Site", "Nombre Agente", "Skill"]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    
+    if missing_cols:
+        logger.warning(f"⚠️ Columnas faltantes para crear hoja 'Comparativa Agentes': {missing_cols}")
+        ws["A1"] = f"Datos insuficientes. Faltan: {', '.join(missing_cols)}"
         return
     
     # Crear copia del DataFrame para procesar
-    df_comparativa = df[["Fecha", "Site", "Nombre Agente"]].copy()
+    df_comparativa = df[["Fecha", "Site", "Nombre Agente", "Skill"]].copy()
     
     # Extraer solo la fecha (sin hora) y convertir a formato dia-mes
     df_comparativa["Fecha"] = pd.to_datetime(df_comparativa["Fecha"]).dt.date
@@ -243,12 +249,13 @@ def crear_hoja_comparativa_agentes(workbook, df):
     fechas_unicas = sorted(df_comparativa["Fecha"].unique())
     fechas_formateadas = [fecha.strftime("%d-%b") for fecha in fechas_unicas]
     
-    # Reemplazar valores NaN en Site y Nombre Agente
+    # Reemplazar valores NaN
     df_comparativa["Site"] = df_comparativa["Site"].fillna("Sin Site")
     df_comparativa["Nombre Agente"] = df_comparativa["Nombre Agente"].fillna("Sin Agente")
+    df_comparativa["Skill"] = df_comparativa["Skill"].fillna("Sin Skill")
     
     # ============================================
-    # TABLA 1: POR SITE
+    # TABLA 1: POR SITE (MANTENIENDO LA ORIGINAL)
     # ============================================
     logger.info("📈 Creando tabla por Site...")
     
@@ -314,12 +321,19 @@ def crear_hoja_comparativa_agentes(workbook, df):
     num_sites = len(pivot_site)
     
     # ============================================
-    # TABLA 2: POR NOMBRE AGENTE
+    # TABLA 2: POR NOMBRE AGENTE (MEJORADA)
     # ============================================
-    logger.info("👤 Creando tabla por Nombre Agente...")
+    logger.info("👤 Creando tabla por Nombre Agente (MEJORADA)...")
     
-    # Crear tabla pivote para Nombre Agente
-    pivot_agente = pd.pivot_table(
+    # Crear una tabla pivote más compleja que incluya Site y Skill
+    # Primero, crear un DataFrame único por agente con su Site y Skill
+    agentes_info = df_comparativa.groupby("Nombre Agente").agg({
+        "Site": lambda x: x.mode()[0] if len(x.mode()) > 0 else "Sin Site",
+        "Skill": lambda x: x.mode()[0] if len(x.mode()) > 0 else "Sin Skill"
+    }).reset_index()
+    
+    # Crear tabla pivote para conteo por agente
+    pivot_counts = pd.pivot_table(
         df_comparativa,
         index="Nombre Agente",
         columns="Fecha",
@@ -328,13 +342,16 @@ def crear_hoja_comparativa_agentes(workbook, df):
     )
     
     # Reordenar columnas por fecha
-    pivot_agente = pivot_agente[fechas_unicas]
+    pivot_counts = pivot_counts[fechas_unicas]
     
     # Renombrar columnas con formato dia-mes
-    pivot_agente.columns = fechas_formateadas
+    pivot_counts.columns = fechas_formateadas
     
-    # Calcular total por agente
-    pivot_agente["Total"] = pivot_agente.sum(axis=1)
+    # Combinar la información de agentes con los conteos
+    pivot_agente = agentes_info.merge(pivot_counts, on="Nombre Agente", how="left")
+    
+    # Calcular total por agente (suma de todas las fechas)
+    pivot_agente["Total"] = pivot_agente[fechas_formateadas].sum(axis=1)
     
     # Ordenar por total descendente
     pivot_agente = pivot_agente.sort_values("Total", ascending=False)
@@ -343,54 +360,101 @@ def crear_hoja_comparativa_agentes(workbook, df):
     fila_actual += 3
     
     # Título de la tabla
-    ws.cell(row=fila_actual, column=1, value="COMPARATIVA POR AGENTE")
+    ws.cell(row=fila_actual, column=1, value="COMPARATIVA POR AGENTE (CON SITE Y SKILL)")
     ws.cell(row=fila_actual, column=1).font = Font(name="Calibri", size=14, bold=True, color="C00000")
     fila_actual += 1
     
-    # Encabezados de tabla
+    # Encabezados de tabla MEJORADOS
     ws.cell(row=fila_actual, column=1, value="Agente")
-    for i, fecha in enumerate(fechas_formateadas, start=2):
+    ws.cell(row=fila_actual, column=2, value="Site")
+    ws.cell(row=fila_actual, column=3, value="Skill")
+    
+    # Encabezados de fechas (empezando desde columna 4)
+    for i, fecha in enumerate(fechas_formateadas, start=4):
         ws.cell(row=fila_actual, column=i, value=fecha)
-    ws.cell(row=fila_actual, column=len(fechas_formateadas)+2, value="Total")
+    
+    # Encabezado de Total
+    total_col = len(fechas_formateadas) + 4
+    ws.cell(row=fila_actual, column=total_col, value="Total")
     
     # Formato encabezados
-    for col in range(1, len(fechas_formateadas)+3):
+    for col in range(1, total_col + 1):
         celda = ws.cell(row=fila_actual, column=col)
         celda.fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
         celda.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-        celda.alignment = Alignment(horizontal="center", vertical="center")
+        celda.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     
     fila_actual += 1
     
-    # Escribir datos de Agente
-    for agente_idx, (agente, fila) in enumerate(pivot_agente.iterrows(), start=0):
-        ws.cell(row=fila_actual, column=1, value=agente)
+    # Inicio de datos de agentes (para aplicar formatos después)
+    inicio_datos_agente = fila_actual
+    
+    # Escribir datos de Agente MEJORADOS
+    for agente_idx, row in pivot_agente.iterrows():
+        # Agente, Site, Skill
+        ws.cell(row=fila_actual, column=1, value=row["Nombre Agente"])
+        ws.cell(row=fila_actual, column=2, value=row["Site"])
+        ws.cell(row=fila_actual, column=3, value=row["Skill"])
         
         # Datos por fecha
-        for fecha_idx, fecha in enumerate(fechas_formateadas, start=2):
-            valor = int(fila[fecha])
+        for fecha_idx, fecha in enumerate(fechas_formateadas, start=4):
+            valor = int(row[fecha]) if fecha in row else 0
             ws.cell(row=fila_actual, column=fecha_idx, value=valor)
         
         # Total
-        ws.cell(row=fila_actual, column=len(fechas_formateadas)+2, value=int(fila["Total"]))
+        ws.cell(row=fila_actual, column=total_col, value=int(row["Total"]))
         fila_actual += 1
     
     # Guardar posición final de tabla Agente
-    inicio_tabla_agente = fila_actual - len(pivot_agente)
     fin_tabla_agente = fila_actual - 1
     num_agentes = len(pivot_agente)
     
     # ============================================
-    # APLICAR FORMATOS CONDICIONALES
+    # AGREGAR FILA DE "TOTAL DEL DÍA" AL FINAL
+    # ============================================
+    logger.info("➕ Agregando fila de 'Total del día'...")
+    
+    # Calcular totales por día (suma de todos los agentes por fecha)
+    totales_dia = {}
+    for fecha in fechas_formateadas:
+        totales_dia[fecha] = pivot_agente[fecha].sum()
+    
+    # Calcular total general (suma de todos los totales)
+    total_general = sum(totales_dia.values())
+    
+    # Agregar fila de "Total del día"
+    ws.cell(row=fila_actual, column=1, value="TOTAL DEL DÍA")
+    
+    # Site y Skill vacíos o con guión
+    ws.cell(row=fila_actual, column=2, value="-")
+    ws.cell(row=fila_actual, column=3, value="-")
+    
+    # Totales por día
+    for fecha_idx, fecha in enumerate(fechas_formateadas, start=4):
+        ws.cell(row=fila_actual, column=fecha_idx, value=totales_dia[fecha])
+    
+    # Total general
+    ws.cell(row=fila_actual, column=total_col, value=total_general)
+    
+    # Aplicar formato ESPECIAL a la fila "Total del día"
+    # Fondo negro, letra blanca, negrita
+    black_fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
+    white_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    center_align = Alignment(horizontal="center", vertical="center")
+    
+    for col in range(1, total_col + 1):
+        celda = ws.cell(row=fila_actual, column=col)
+        celda.fill = black_fill
+        celda.font = white_font
+        celda.alignment = center_align
+    
+    # Marcar posición final incluyendo "Total del día"
+    fin_tabla_con_total = fila_actual
+    
+    # ============================================
+    # APLICAR FORMATOS CONDICIONALES A TABLA AGENTES
     # ============================================
     logger.info("🎨 Aplicando formatos condicionales...")
-    
-    # Aplicar barras de datos degradadas rojas a ambas tablas
-    # Color rojo degradado: FF6666 (claro) a C00000 (oscuro)
-    
-    # Para tabla Site
-    inicio_datos_site = fin_tabla_site - num_sites + 1
-    inicio_datos_agente = inicio_tabla_agente + 1
     
     # Definir regla de barras de datos rojas
     data_bar_rule = DataBarRule(
@@ -401,17 +465,7 @@ def crear_hoja_comparativa_agentes(workbook, df):
         color="FF6666"  # Rojo claro para el degradado
     )
     
-    # Aplicar a todas las columnas de fechas en tabla Site
-    for col_idx in range(2, len(fechas_formateadas) + 2):  # Columnas B en adelante
-        col_letter = get_column_letter(col_idx)
-        rango_site = f"{col_letter}{inicio_datos_site}:{col_letter}{fin_tabla_site}"
-        ws.conditional_formatting.add(rango_site, data_bar_rule)
-    
-    # Aplicar a columna Total de Site
-    col_total_site = get_column_letter(len(fechas_formateadas) + 2)
-    rango_total_site = f"{col_total_site}{inicio_datos_site}:{col_total_site}{fin_tabla_site}"
-    
-    # Para total usar una regla diferente (más oscura)
+    # Definir regla para total (más oscura)
     data_bar_total_rule = DataBarRule(
         start_type="min",
         start_value=0,
@@ -419,21 +473,23 @@ def crear_hoja_comparativa_agentes(workbook, df):
         end_value=None,
         color="C00000"  # Rojo HSBC más oscuro
     )
-    ws.conditional_formatting.add(rango_total_site, data_bar_total_rule)
     
-    # Aplicar a todas las columnas de fechas en tabla Agente
-    for col_idx in range(2, len(fechas_formateadas) + 2):  # Columnas B en adelante
+    # Aplicar barras de datos solo a las columnas numéricas (fechas y total)
+    # NOTA: Excluimos columnas 1-3 (Agente, Site, Skill)
+    for col_idx in range(4, total_col + 1):  # Desde columna D hasta Total
         col_letter = get_column_letter(col_idx)
+        
+        # Rango de datos de agentes (excluyendo la fila de "Total del día")
         rango_agente = f"{col_letter}{inicio_datos_agente}:{col_letter}{fin_tabla_agente}"
-        ws.conditional_formatting.add(rango_agente, data_bar_rule)
-    
-    # Aplicar a columna Total de Agente
-    col_total_agente = get_column_letter(len(fechas_formateadas) + 2)
-    rango_total_agente = f"{col_total_agente}{inicio_datos_agente}:{col_total_agente}{fin_tabla_agente}"
-    ws.conditional_formatting.add(rango_total_agente, data_bar_total_rule)
+        
+        # Aplicar formato diferente para columna Total
+        if col_idx == total_col:
+            ws.conditional_formatting.add(rango_agente, data_bar_total_rule)
+        else:
+            ws.conditional_formatting.add(rango_agente, data_bar_rule)
     
     # ============================================
-    # APLICAR FORMATO DE TABLA
+    # APLICAR FORMATO DE TABLA COMPLETO
     # ============================================
     
     # Definir bordes
@@ -445,50 +501,55 @@ def crear_hoja_comparativa_agentes(workbook, df):
     )
     
     # Aplicar bordes a tabla Site
-    for row in range(inicio_datos_site - 1, fin_tabla_site + 1):  # Incluye encabezado
+    for row in range(inicio_datos_agente - 2, fin_tabla_site + 1):
         for col in range(1, len(fechas_formateadas) + 3):
             ws.cell(row=row, column=col).border = thin_border
     
-    # Aplicar bordes a tabla Agente
-    for row in range(inicio_datos_agente - 1, fin_tabla_agente + 1):  # Incluye encabezado
-        for col in range(1, len(fechas_formateadas) + 3):
+    # Aplicar bordes a tabla Agente (incluyendo "Total del día")
+    for row in range(inicio_datos_agente - 1, fin_tabla_con_total + 1):
+        for col in range(1, total_col + 1):
             ws.cell(row=row, column=col).border = thin_border
     
-    # Ajustar alineación y formato de celdas
-    for row in ws.iter_rows(min_row=1, max_row=fin_tabla_agente, min_col=1, max_col=len(fechas_formateadas)+3):
+    # Ajustar alineación y formato de celdas para tabla Agente
+    for row in ws.iter_rows(min_row=inicio_datos_agente - 1, max_row=fin_tabla_con_total, min_col=1, max_col=total_col):
         for cell in row:
-            if cell.column > 1:  # Todas las columnas excepto la primera (Site/Agente)
+            if cell.column > 3:  # Columnas numéricas (fechas y total)
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 if cell.value and isinstance(cell.value, (int, float)):
                     cell.number_format = '#,##0'
-            else:
+            else:  # Columnas de texto (Agente, Site, Skill)
                 cell.alignment = Alignment(horizontal="left", vertical="center")
     
     # ============================================
     # AJUSTAR ANCHO DE COLUMNAS
     # ============================================
     
-    # Para la primera columna (Site/Agente)
-    ws.column_dimensions['A'].width = 25
+    # Para tabla Site (columnas antiguas)
+    ws.column_dimensions['A'].width = 25  # Site
+    
+    # Para tabla Agente (nuevas columnas)
+    ws.column_dimensions['A'].width = 30  # Agente (más ancho)
+    ws.column_dimensions['B'].width = 15  # Site
+    ws.column_dimensions['C'].width = 15  # Skill
     
     # Para columnas de fechas
-    for col_idx in range(2, len(fechas_formateadas) + 2):
+    for col_idx in range(4, total_col):
         col_letter = get_column_letter(col_idx)
         ws.column_dimensions[col_letter].width = 10
     
     # Para columna Total
-    col_total = get_column_letter(len(fechas_formateadas) + 2)
-    ws.column_dimensions[col_total].width = 12
+    col_total_letter = get_column_letter(total_col)
+    ws.column_dimensions[col_total_letter].width = 12
     
     # ============================================
     # AGREGAR FILTROS
     # ============================================
     
     # Filtros para tabla Site
-    ws.auto_filter.ref = f"A{inicio_datos_site - 1}:{col_total}{fin_tabla_site}"
+    ws.auto_filter.ref = f"A{inicio_datos_agente - 2}:{get_column_letter(len(fechas_formateadas)+2)}{fin_tabla_site}"
     
-    # Filtros para tabla Agente
-    ws.auto_filter.ref = f"A{inicio_datos_agente - 1}:{col_total}{fin_tabla_agente}"
+    # Filtros para tabla Agente (EXCLUYENDO la fila de "Total del día")
+    ws.auto_filter.ref = f"A{inicio_datos_agente - 1}:{col_total_letter}{fin_tabla_agente}"
     
     # ============================================
     # AGREGAR INFORMACIÓN DE RESUMEN
@@ -496,14 +557,14 @@ def crear_hoja_comparativa_agentes(workbook, df):
     
     # Calcular totales generales
     total_general_site = pivot_site["Total"].sum()
-    total_general_agente = pivot_agente["Total"].sum()
     
     # Mostrar resumen en log
     logger.info(f"✓ Tabla por Site: {num_sites} sites, {len(fechas_formateadas)} días, {total_general_site} casos totales")
-    logger.info(f"✓ Tabla por Agente: {num_agentes} agentes, {len(fechas_formateadas)} días, {total_general_agente} casos totales")
+    logger.info(f"✓ Tabla por Agente: {num_agentes} agentes, {len(fechas_formateadas)} días, {total_general} casos totales")
+    logger.info(f"✓ Fila 'Total del día' agregada con fondo negro y letra blanca")
     
     # Agregar nota al final del documento
-    nota_fila = fin_tabla_agente + 3
+    nota_fila = fin_tabla_con_total + 3
     ws.cell(row=nota_fila, column=1, value="NOTAS:")
     ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=10, bold=True, italic=True, color="666666")
     
@@ -519,8 +580,11 @@ def crear_hoja_comparativa_agentes(workbook, df):
     ws.cell(row=nota_fila, column=1, value=f"3. Período analizado: {fechas_formateadas[0]} al {fechas_formateadas[-1]} ({len(fechas_formateadas)} días)")
     ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
     
-    logger.info("✅ Hoja 'Comparativa Agentes' creada exitosamente")
-
+    nota_fila += 1
+    ws.cell(row=nota_fila, column=1, value="4. La fila 'TOTAL DEL DÍA' muestra la suma diaria de todos los agentes.")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
+    
+    logger.info("✅ Hoja 'Comparativa Agentes' MEJORADA creada exitosamente")
 def crear_hoja_tiempo_agente(workbook, df):
     """
     Crea hoja 'Tiempo agente' con tabla pivote y gráfica
