@@ -218,9 +218,9 @@ def crear_hoja_comparativa_agentes(workbook, df):
     """
     Crea hoja 'Comparativa Agentes' con dos tablas:
     1. Por Site (con barras de datos degradadas rojas)
-    2. Por Nombre Agente (con Site y Supervisor)
-    CON MEJORAS: Agente|Site|Supervisor|08-dic|09-dic|...|22-ene|Total
-    Y TOTAL DEL DÍA al final con fondo negro y letra blanca en TODAS las columnas
+    2. Por Nombre Agente (con Site, Supervisor y Skill)
+    CON MEJORAS: Agente|Site|Supervisor|Skill|08-dic|09-dic|...|22-ene|Total
+    Y TOTAL DEL DÍA al final con barras de datos rojas
     """
     logger.info("\n📊 CREANDO HOJA 'COMPARATIVA AGENTES' MEJORADA...")
     
@@ -228,16 +228,28 @@ def crear_hoja_comparativa_agentes(workbook, df):
     ws = workbook.create_sheet(title="Comparativa Agentes")
     
     # Verificar que tenemos los datos necesarios
-    required_cols = ["Fecha", "Site", "Nombre Agente", "Supervisor"]
+    required_cols = ["Fecha", "Site", "Nombre Agente", "Supervisor", "Skill"]
     missing_cols = [col for col in required_cols if col not in df.columns]
     
     if missing_cols:
         logger.warning(f"⚠️ Columnas faltantes para crear hoja 'Comparativa Agentes': {missing_cols}")
-        ws["A1"] = f"Datos insuficientes. Faltan: {', '.join(missing_cols)}"
-        return
+        # Intentar con columnas mínimas
+        required_cols_min = ["Fecha", "Site", "Nombre Agente"]
+        missing_cols_min = [col for col in required_cols_min if col not in df.columns]
+        
+        if missing_cols_min:
+            ws["A1"] = f"Datos insuficientes. Faltan: {', '.join(missing_cols_min)}"
+            return
+        else:
+            # Si faltan Supervisor o Skill, crear columnas vacías
+            if "Supervisor" not in df.columns:
+                df["Supervisor"] = "Sin Supervisor"
+            if "Skill" not in df.columns:
+                df["Skill"] = "Sin Skill"
+            logger.info("✓ Columnas Supervisor y/o Skill creadas como vacías")
     
     # Crear copia del DataFrame para procesar
-    df_comparativa = df[["Fecha", "Site", "Nombre Agente", "Supervisor"]].copy()
+    df_comparativa = df[["Fecha", "Site", "Nombre Agente", "Supervisor", "Skill"]].copy()
     
     # Extraer solo la fecha (sin hora) y convertir a formato dia-mes
     df_comparativa["Fecha"] = pd.to_datetime(df_comparativa["Fecha"]).dt.date
@@ -253,6 +265,7 @@ def crear_hoja_comparativa_agentes(workbook, df):
     df_comparativa["Site"] = df_comparativa["Site"].fillna("Sin Site")
     df_comparativa["Nombre Agente"] = df_comparativa["Nombre Agente"].fillna("Sin Agente")
     df_comparativa["Supervisor"] = df_comparativa["Supervisor"].fillna("Sin Supervisor")
+    df_comparativa["Skill"] = df_comparativa["Skill"].fillna("Sin Skill")
     
     # ============================================
     # TABLA 1: POR SITE (CON BARRAS DE DATOS DEGRADADAS ROJAS)
@@ -285,7 +298,7 @@ def crear_hoja_comparativa_agentes(workbook, df):
     
     # Título de la tabla
     ws.cell(row=fila_actual, column=1, value="COMPARATIVA POR SITE")
-    ws.cell(row=fila_actual, column=1).font = Font(name="Calibri", size=14, bold=True, color="C00000")
+    ws.cell(row=fila_actual, column=1).font = Font(name="Univers Next for HSBC Light", size=14, bold=True, color="C00000")
     fila_actual += 1
     
     # Encabezados de tabla
@@ -298,7 +311,7 @@ def crear_hoja_comparativa_agentes(workbook, df):
     for col in range(1, len(fechas_formateadas)+3):
         celda = ws.cell(row=fila_actual, column=col)
         celda.fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
-        celda.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        celda.font = Font(name="Univers Next for HSBC Light", size=11, bold=True, color="FFFFFF")
         celda.alignment = Alignment(horizontal="center", vertical="center")
     
     fila_actual += 1
@@ -362,11 +375,12 @@ def crear_hoja_comparativa_agentes(workbook, df):
     # ============================================
     logger.info("👤 Creando tabla por Nombre Agente (MEJORADA)...")
     
-    # Crear una tabla pivote más compleja que incluya Site y Supervisor
-    # Primero, crear un DataFrame único por agente con su Site y Supervisor
+    # Crear una tabla pivote más compleja que incluya Site, Supervisor y Skill
+    # Primero, crear un DataFrame único por agente con su Site, Supervisor y Skill
     agentes_info = df_comparativa.groupby("Nombre Agente").agg({
         "Site": lambda x: x.mode()[0] if len(x.mode()) > 0 else "Sin Site",
-        "Supervisor": lambda x: x.mode()[0] if len(x.mode()) > 0 else "Sin Supervisor"
+        "Supervisor": lambda x: x.mode()[0] if len(x.mode()) > 0 else "Sin Supervisor",
+        "Skill": lambda x: x.mode()[0] if len(x.mode()) > 0 else "Sin Skill"
     }).reset_index()
     
     # Crear tabla pivote para conteo por agente
@@ -397,28 +411,29 @@ def crear_hoja_comparativa_agentes(workbook, df):
     fila_actual += 3
     
     # Título de la tabla
-    ws.cell(row=fila_actual, column=1, value="COMPARATIVA POR AGENTE (CON SITE Y SUPERVISOR)")
-    ws.cell(row=fila_actual, column=1).font = Font(name="Calibri", size=14, bold=True, color="C00000")
+    ws.cell(row=fila_actual, column=1, value="COMPARATIVA POR AGENTE (CON SITE, SUPERVISOR Y SKILL)")
+    ws.cell(row=fila_actual, column=1).font = Font(name="Univers Next for HSBC Light", size=14, bold=True, color="C00000")
     fila_actual += 1
     
     # Encabezados de tabla MEJORADOS
     ws.cell(row=fila_actual, column=1, value="Agente")
     ws.cell(row=fila_actual, column=2, value="Site")
     ws.cell(row=fila_actual, column=3, value="Supervisor")
+    ws.cell(row=fila_actual, column=4, value="Skill")
     
-    # Encabezados de fechas (empezando desde columna 4)
-    for i, fecha in enumerate(fechas_formateadas, start=4):
+    # Encabezados de fechas (empezando desde columna 5)
+    for i, fecha in enumerate(fechas_formateadas, start=5):
         ws.cell(row=fila_actual, column=i, value=fecha)
     
     # Encabezado de Total
-    total_col = len(fechas_formateadas) + 4
+    total_col = len(fechas_formateadas) + 5  # +5 porque ahora tenemos 4 columnas de texto
     ws.cell(row=fila_actual, column=total_col, value="Total")
     
     # Formato encabezados
     for col in range(1, total_col + 1):
         celda = ws.cell(row=fila_actual, column=col)
         celda.fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
-        celda.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        celda.font = Font(name="Univers Next for HSBC Light", size=11, bold=True, color="FFFFFF")
         celda.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     
     fila_actual += 1
@@ -428,13 +443,14 @@ def crear_hoja_comparativa_agentes(workbook, df):
     
     # Escribir datos de Agente MEJORADOS
     for agente_idx, row in pivot_agente.iterrows():
-        # Agente, Site, Supervisor
+        # Agente, Site, Supervisor, Skill
         ws.cell(row=fila_actual, column=1, value=row["Nombre Agente"])
         ws.cell(row=fila_actual, column=2, value=row["Site"])
         ws.cell(row=fila_actual, column=3, value=row["Supervisor"])
+        ws.cell(row=fila_actual, column=4, value=row["Skill"])
         
         # Datos por fecha
-        for fecha_idx, fecha in enumerate(fechas_formateadas, start=4):
+        for fecha_idx, fecha in enumerate(fechas_formateadas, start=5):
             valor = int(row[fecha]) if fecha in row else 0
             ws.cell(row=fila_actual, column=fecha_idx, value=valor)
         
@@ -460,27 +476,29 @@ def crear_hoja_comparativa_agentes(workbook, df):
     total_general = sum(totales_dia.values())
     
     # Agregar fila de "Total del día"
-    ws.cell(row=fila_actual, column=1, value="TOTAL DEL DÍA")
+    total_dia_fila = fila_actual
+    ws.cell(row=total_dia_fila, column=1, value="TOTAL DEL DÍA")
     
-    # Site y Supervisor vacíos o con guión
-    ws.cell(row=fila_actual, column=2, value="-")
-    ws.cell(row=fila_actual, column=3, value="-")
+    # Site, Supervisor y Skill vacíos o con guión
+    ws.cell(row=total_dia_fila, column=2, value="-")
+    ws.cell(row=total_dia_fila, column=3, value="-")
+    ws.cell(row=total_dia_fila, column=4, value="-")
     
     # Totales por día
-    for fecha_idx, fecha in enumerate(fechas_formateadas, start=4):
-        ws.cell(row=fila_actual, column=fecha_idx, value=totales_dia[fecha])
+    for fecha_idx, fecha in enumerate(fechas_formateadas, start=5):
+        ws.cell(row=total_dia_fila, column=fecha_idx, value=totales_dia[fecha])
     
     # Total general
-    ws.cell(row=fila_actual, column=total_col, value=total_general)
+    ws.cell(row=total_dia_fila, column=total_col, value=total_general)
     
     # Aplicar formato ESPECIAL a la fila "Total del día"
     # Fondo negro, letra blanca, negrita en TODAS las columnas
     black_fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
-    white_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    white_font = Font(name="Univers Next for HSBC Light", size=11, bold=True, color="FFFFFF")
     center_align = Alignment(horizontal="center", vertical="center")
     
     for col in range(1, total_col + 1):
-        celda = ws.cell(row=fila_actual, column=col)
+        celda = ws.cell(row=total_dia_fila, column=col)
         celda.fill = black_fill
         celda.font = white_font
         celda.alignment = center_align
@@ -493,7 +511,7 @@ def crear_hoja_comparativa_agentes(workbook, df):
     # ============================================
     logger.info("🎨 Aplicando formatos condicionales a tabla Agente...")
     
-    # Definir regla de barras de datos rojas
+    # Definir regla de barras de datos rojas para agentes
     data_bar_rule_agente = DataBarRule(
         start_type="min",
         start_value=0,
@@ -502,7 +520,7 @@ def crear_hoja_comparativa_agentes(workbook, df):
         color="FF6666"  # Rojo claro para el degradado
     )
     
-    # Definir regla para total (más oscura)
+    # Definir regla para total de agentes (más oscura)
     data_bar_total_rule_agente = DataBarRule(
         start_type="min",
         start_value=0,
@@ -511,9 +529,17 @@ def crear_hoja_comparativa_agentes(workbook, df):
         color="C00000"  # Rojo HSBC más oscuro
     )
     
-    # Aplicar barras de datos solo a las columnas numéricas (fechas y total)
-    # NOTA: Excluimos columnas 1-3 (Agente, Site, Supervisor)
-    for col_idx in range(4, total_col + 1):  # Desde columna D hasta Total
+    # Definir regla especial de barras de datos NEGRAS para "TOTAL DEL DÍA"
+    data_bar_black_rule = DataBarRule(
+        start_type="min",
+        start_value=0,
+        end_type="max",
+        end_value=None,
+        color="000000"  # NEGRO para "Total del día"
+    )
+    
+    # Aplicar barras de datos rojas a los agentes (excluyendo "Total del día")
+    for col_idx in range(5, total_col + 1):  # Desde columna E (fechas) hasta Total
         col_letter = get_column_letter(col_idx)
         
         # Rango de datos de agentes (excluyendo la fila de "Total del día")
@@ -524,6 +550,13 @@ def crear_hoja_comparativa_agentes(workbook, df):
             ws.conditional_formatting.add(rango_agente, data_bar_total_rule_agente)
         else:
             ws.conditional_formatting.add(rango_agente, data_bar_rule_agente)
+    
+    # Aplicar barras de datos NEGRAS a la fila "TOTAL DEL DÍA"
+    # Solo a las columnas numéricas (fechas y total)
+    for col_idx in range(5, total_col + 1):  # Desde columna E (fechas) hasta Total
+        col_letter = get_column_letter(col_idx)
+        rango_total_dia = f"{col_letter}{total_dia_fila}:{col_letter}{total_dia_fila}"
+        ws.conditional_formatting.add(rango_total_dia, data_bar_black_rule)
     
     # ============================================
     # APLICAR FORMATO DE TABLA COMPLETO
@@ -550,11 +583,11 @@ def crear_hoja_comparativa_agentes(workbook, df):
     # Ajustar alineación y formato de celdas para tabla Agente
     for row in ws.iter_rows(min_row=inicio_datos_agente - 1, max_row=fin_tabla_con_total, min_col=1, max_col=total_col):
         for cell in row:
-            if cell.column > 3:  # Columnas numéricas (fechas y total)
+            if cell.column > 4:  # Columnas numéricas (fechas y total) - después de las 4 columnas de texto
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 if cell.value and isinstance(cell.value, (int, float)):
                     cell.number_format = '#,##0'
-            else:  # Columnas de texto (Agente, Site, Supervisor)
+            else:  # Columnas de texto (Agente, Site, Supervisor, Skill)
                 cell.alignment = Alignment(horizontal="left", vertical="center")
     
     # ============================================
@@ -567,10 +600,11 @@ def crear_hoja_comparativa_agentes(workbook, df):
     # Para tabla Agente (nuevas columnas)
     ws.column_dimensions['A'].width = 30  # Agente (más ancho)
     ws.column_dimensions['B'].width = 15  # Site
-    ws.column_dimensions['C'].width = 20  # Supervisor (más ancho que Skill)
+    ws.column_dimensions['C'].width = 20  # Supervisor
+    ws.column_dimensions['D'].width = 15  # Skill
     
     # Para columnas de fechas
-    for col_idx in range(4, total_col):
+    for col_idx in range(5, total_col):
         col_letter = get_column_letter(col_idx)
         ws.column_dimensions[col_letter].width = 10
     
@@ -598,33 +632,37 @@ def crear_hoja_comparativa_agentes(workbook, df):
     # Mostrar resumen en log
     logger.info(f"✓ Tabla por Site: {num_sites} sites, {len(fechas_formateadas)} días, {total_general_site} casos totales")
     logger.info(f"✓ Tabla por Agente: {num_agentes} agentes, {len(fechas_formateadas)} días, {total_general} casos totales")
-    logger.info(f"✓ Fila 'Total del día' agregada con fondo negro y letra blanca en TODAS las columnas")
-    logger.info(f"✓ Tabla Site ahora tiene barras de datos degradadas rojas")
+    logger.info(f"✓ Fila 'Total del día' con fondo negro, letras blancas y barras de datos NEGRAS")
+    logger.info(f"✓ Tabla Agente ahora incluye: Site, Supervisor y Skill")
     
     # Agregar nota al final del documento
     nota_fila = fin_tabla_con_total + 3
     ws.cell(row=nota_fila, column=1, value="NOTAS:")
-    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=10, bold=True, italic=True, color="666666")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Univers Next for HSBC Light", size=10, bold=True, italic=True, color="666666")
     
     nota_fila += 1
     ws.cell(row=nota_fila, column=1, value="1. Las barras rojas degradadas muestran la distribución de casos por día.")
-    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Univers Next for HSBC Light", size=9, italic=True, color="666666")
     
     nota_fila += 1
     ws.cell(row=nota_fila, column=1, value="2. Use los filtros en los encabezados para ordenar o filtrar los datos.")
-    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Univers Next for HSBC Light", size=9, italic=True, color="666666")
     
     nota_fila += 1
     ws.cell(row=nota_fila, column=1, value=f"3. Período analizado: {fechas_formateadas[0]} al {fechas_formateadas[-1]} ({len(fechas_formateadas)} días)")
-    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Univers Next for HSBC Light", size=9, italic=True, color="666666")
     
     nota_fila += 1
     ws.cell(row=nota_fila, column=1, value="4. La fila 'TOTAL DEL DÍA' muestra la suma diaria de todos los agentes.")
-    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Univers Next for HSBC Light", size=9, italic=True, color="666666")
     
     nota_fila += 1
-    ws.cell(row=nota_fila, column=1, value="5. Tabla Agente muestra Site y Supervisor de cada agente.")
-    ws.cell(row=nota_fila, column=1).font = Font(name="Calibri", size=9, italic=True, color="666666")
+    ws.cell(row=nota_fila, column=1, value="5. Tabla Agente muestra Site, Supervisor y Skill de cada agente.")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Univers Next for HSBC Light", size=9, italic=True, color="666666")
+    
+    nota_fila += 1
+    ws.cell(row=nota_fila, column=1, value="6. 'TOTAL DEL DÍA' tiene barras de datos NEGRAS sobre fondo negro.")
+    ws.cell(row=nota_fila, column=1).font = Font(name="Univers Next for HSBC Light", size=9, italic=True, color="666666")
     
     logger.info("✅ Hoja 'Comparativa Agentes' MEJORADA creada exitosamente")
 def crear_hoja_tiempo_agente(workbook, df):
@@ -822,11 +860,11 @@ def aplicar_formato_tabla_tiempos(worksheet, num_filas, num_columnas):
     """
     # Formato de encabezados
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")  # Azul
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_font = Font(name="Univers Next for HSBC Light", size=11, bold=True, color="FFFFFF")
     header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     
     # Formato de datos
-    data_font = Font(name="Calibri", size=10)
+    data_font = Font(name="Univers Next for HSBC Light", size=10)
     data_alignment = Alignment(horizontal="center", vertical="center")
     
     # Bordes
@@ -957,7 +995,7 @@ def crear_grafica_combinada_tiempo_agente(workbook, worksheet, df_ultimos_7, cat
     # Agregar nota explicativa
     nota_cell = get_column_letter(len(categorias_orden) + 5) + "25"
     worksheet[nota_cell] = "NOTA: La gráfica muestra automáticamente los últimos 7 días."
-    worksheet[nota_cell].font = Font(name="Calibri", size=9, italic=True, color="666666")
+    worksheet[nota_cell].font = Font(name="Univers Next for HSBC Light", size=9, italic=True, color="666666")
     
     logger.info("✓ Gráfica combinada de tiempo agente creada (columnas apiladas + línea)")
 
@@ -1057,7 +1095,7 @@ def crear_grafica_combinada_tiempo_robot(workbook, worksheet, df_ultimos_7, cate
     # Agregar nota explicativa
     nota_cell = get_column_letter(len(categorias_orden) + 5) + "25"
     worksheet[nota_cell] = "NOTA: La gráfica muestra automáticamente los últimos 7 días."
-    worksheet[nota_cell].font = Font(name="Calibri", size=9, italic=True, color="666666")
+    worksheet[nota_cell].font = Font(name="Univers Next for HSBC Light", size=9, italic=True, color="666666")
     
     logger.info("✓ Gráfica combinada de tiempo robot creada (columnas apiladas + línea)")
 
@@ -1096,13 +1134,13 @@ def aplicar_formato_completo_excel(archivo_excel):
             
             # Definir tipografía base
             try:
-                # Intentar usar Univers Next, si no está disponible usar Calibri
+                # Intentar usar Univers Next, si no está disponible usar Univers Next for HSBC Light
                 base_font = Font(name="Univers Next for HSBC Light", size=10)
                 logger.info("   ✓ Usando tipografía 'Univers Next for HSBC Light'")
             except:
-                # Fallback a Calibri (similar sans-serif)
-                base_font = Font(name="Calibri", size=10)
-                logger.info("   ⚠️ 'Univers Next for HSBC Light' no disponible, usando 'Calibri' como alternativa")
+                # Fallback a Univers Next for HSBC Light (similar sans-serif)
+                base_font = Font(name="Univers Next for HSBC Light", size=10)
+                logger.info("   ⚠️ 'Univers Next for HSBC Light' no disponible, usando 'Univers Next for HSBC Light' como alternativa")
             
             # Definir bordes BLANCOS
             white_border = Border(
@@ -1128,7 +1166,7 @@ def aplicar_formato_completo_excel(archivo_excel):
             
             # Definir estilo para encabezados
             header_fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")  # Rojo HSBC
-            header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")  # Texto blanco, bold
+            header_font = Font(name="Univers Next for HSBC Light", size=11, bold=True, color="FFFFFF")  # Texto blanco, bold
             header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             
             # Crear borde blanco especial para encabezados (más grueso para mejor contraste)
