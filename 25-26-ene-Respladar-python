@@ -1,0 +1,27 @@
+# backup_packages.py
+import subprocess
+import os
+import sys
+
+def backup_packages():
+    # 1. Generar requirements.txt
+    with open('requirements.txt', 'w') as f:
+        subprocess.call([sys.executable, '-m', 'pip', 'freeze'], stdout=f)
+    
+    # 2. Crear carpeta para paquetes
+    os.makedirs('python_packages_backup', exist_ok=True)
+    
+    # 3. Descargar paquetes
+    subprocess.call([
+        sys.executable, '-m', 'pip', 
+        'download', 
+        '-r', 'requirements.txt',
+        '-d', 'python_packages_backup'
+    ])
+    
+    print(f"Backup completado:")
+    print(f"- requirements.txt")
+    print(f"- Carpeta: python_packages_backup")
+
+if __name__ == '__main__':
+    backup_packages()
